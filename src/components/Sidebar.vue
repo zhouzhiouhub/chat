@@ -78,6 +78,19 @@ const groups = computed(() => {
           </div>
         </section>
       </div>
+      <div class="mt-auto border-t border-line p-3">
+        <button
+          class="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm"
+          :class="store.settingsOpen ? 'bg-white shadow-sm' : 'hover:bg-white/70'"
+          @click="store.openSettings()"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" />
+          </svg>
+          设置
+        </button>
+      </div>
     </aside>
   </div>
 </template>

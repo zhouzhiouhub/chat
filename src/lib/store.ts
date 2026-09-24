@@ -1,6 +1,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, type InjectionKey } from 'vue'
 import {
   angleFromPrompt,
+  chooseModel,
   countFromPrompt,
   enhanceFromPrompt,
   getModel,
@@ -8,14 +9,19 @@ import {
   inferTool,
   lightFromPrompt,
   normalizeResolution,
+  platformOf,
+  PLATFORMS,
   ratioFromPrompt,
   resolveRatio,
   roleLabel,
   splitFromPrompt,
   TOOL_META,
   uid,
+  usesApi,
+  type ModelOption,
   type Suggestion,
 } from './catalog'
+import { requestProviderImages, type ImageJob, type ImageRequest } from './providers'
 import { composeImage, cropToRatio, cutoutImage, downscaleFile, resizeImage, sliceGrid } from './render'
 import type {
   AspectRatio,
@@ -72,6 +78,16 @@ export interface ChatStore {
   openLightbox: (images: ImageAsset[], index: number) => void
   closeLightbox: () => void
   shiftLightbox: (step: number) => void
+  settingsOpen: boolean
+  connectedIds: string[]
+  openSettings: () => void
+  closeSettings: () => void
+  apiKey: (platformId: string) => string
+  baseUrl: (platformId: string) => string
+  saveApi: (platformId: string, apiKey: string, baseUrl: string) => void
+  clearApi: (platformId: string) => void
+  modelFor: (tool: ToolId) => ModelOption | null
+  requestImages: (input: ImageJob) => Promise<string[]>
 }
 
 interface CommitEdit {
@@ -94,6 +110,12 @@ export function useChat(): ChatStore {
 }
 
 const STORAGE_KEY = 'huahua.v1'
+const API_STORAGE_KEY = 'huahua.api.v1'
+
+interface ApiConfig {
+  apiKey: string
+  baseUrl: string
+}
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -108,6 +130,26 @@ function emptyChat(): Conversation {
 
 function blankMessage(role: Message['role'], text = ''): Message {
   return { id: uid(), role, text, plan: [], attachments: [], confirm: null, images: [] }
+}
+
+function loadApi(): Record<string, ApiConfig> {
+  try {
+    const raw = localStorage.getItem(API_STORAGE_KEY)
+    if (!raw) return {}
+    const data = JSON.parse(raw) as Record<string, ApiConfig>
+    const configs: Record<string, ApiConfig> = {}
+    for (const platform of PLATFORMS) {
+      const item = data[platform.id]
+      if (!item?.apiKey?.trim()) continue
+      configs[platform.id] = {
+        apiKey: item.apiKey.trim(),
+        baseUrl: item.baseUrl?.trim() || platform.defaultBaseUrl,
+      }
+    }
+    return configs
+  } catch {
+    return {}
+  }
 }
 
 function load(): {
@@ -330,7 +372,13 @@ export function createChatStore(): ChatStore {
   const editor = ref<EditorState | null>(null)
   const lightbox = ref<LightboxState | null>(null)
   const pulse = ref(0)
+  const settingsOpen = ref(false)
+  const apiConfigs = ref<Record<string, ApiConfig>>(loadApi())
+  const connectedIds = computed(() =>
+    PLATFORMS.filter((platform) => apiConfigs.value[platform.id]?.apiKey.trim()).map((platform) => platform.id),
+  )
   let runToken = 0
+  let requests = new AbortController()
 
   const active = computed(() => chats.value.find((chat) => chat.id === activeId.value) ?? null)
 
@@ -380,6 +428,55 @@ export function createChatStore(): ChatStore {
     }
   }
 
+  function modelFor(tool: ToolId): ModelOption | null {
+    return chooseModel(tool, connectedIds.value)
+  }
+
+  function assignModel(tool: ToolId): ModelOption | null {
+    const chosen = modelFor(tool)
+    if (!chosen) return null
+    modelId.value = chosen.id
+    resolution.value = normalizeResolution(chosen.id, resolution.value)
+    return chosen
+  }
+
+  function specToRequest(spec: ConfirmSpec): ImageJob {
+    return {
+      modelId: spec.modelId,
+      tool: spec.tool,
+      prompt: spec.prompt,
+      ratio: resolveRatio(spec.ratio, spec.prompt),
+      resolution: spec.resolution,
+      count: spec.tool === 'grid' ? 1 : spec.count,
+      quality: spec.quality,
+      sourceUrl: spec.sourceUrl,
+      referenceUrls: spec.referenceUrls,
+    }
+  }
+
+  async function requestImages(input: ImageJob): Promise<string[]> {
+    const model = getModel(input.modelId)
+    const request: ImageRequest = {
+      ...input,
+      apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
+      baseUrl: baseUrl(model.platformId),
+      signal: requests.signal,
+    }
+    return requestProviderImages(request)
+  }
+
+  function baseUrl(platformId: string): string {
+    return apiConfigs.value[platformId]?.baseUrl.trim() || platformOf(platformId).defaultBaseUrl
+  }
+
+  function persistApi() {
+    try {
+      localStorage.setItem(API_STORAGE_KEY, JSON.stringify(apiConfigs.value))
+    } catch {
+      // Keep the keys in memory when storage is unavailable.
+    }
+  }
+
   function findMessage(messageId: string): Message | null {
     for (const chat of chats.value) {
       const message = chat.messages.find((item) => item.id === messageId)
@@ -403,10 +500,10 @@ export function createChatStore(): ChatStore {
     if (!spec) return
     spec.status = 'generating'
     bump()
-    await wait(720 + spec.count * 160)
+    if (!usesApi(spec.tool)) await wait(720 + spec.count * 160)
     if (token !== runToken) return
     try {
-      const urls = await produce(spec)
+      const urls = usesApi(spec.tool) ? await requestImages(specToRequest(spec)) : await produce(spec)
       if (token !== runToken) return
       const chat = current()
       const model = getModel(spec.modelId)
@@ -432,9 +529,9 @@ export function createChatStore(): ChatStore {
           ? `调整像素 · ${message.images[0]?.resolution ?? ''}`
           : `${TOOL_META[spec.tool].label} · ${model.name} · ${ratioLabel} · ${urls.length} 张`
       message.text = doneText(spec.tool)
-    } catch {
+    } catch (error) {
       spec.status = 'cancelled'
-      message.text = '这次预览没有完成，请再试一次。'
+      message.text = error instanceof Error ? error.message : '这次生成没有完成，请再试一次。'
     }
     bump()
   }
@@ -481,6 +578,7 @@ export function createChatStore(): ChatStore {
         draft.value = ''
         attachments.value = []
         pendingTool.value = null
+        if (usesApi(toolChip)) assignModel(toolChip)
         openEditorFrom(toolChip, source, text, chat)
         return
       }
@@ -519,6 +617,11 @@ export function createChatStore(): ChatStore {
         assistant.text = `要标注「${source.label}」，请点开图片使用标注工具圈出区域，并写明这块是要修改还是保留。`
         return
       }
+      if (usesApi(tool) && !assignModel(tool)) {
+        assistant.text = '还没有可用的图片模型。请点左下角「设置」，接入平台 API。保存后，生成时会自动选用该平台的内置模型。'
+        return
+      }
+      const chosen = getModel(modelId.value)
       assistant.text =
         mode.value === 'auto'
           ? '我按当前规格直接生成。新结果留在这条对话里，原来的图片不会被覆盖。'
@@ -530,7 +633,7 @@ export function createChatStore(): ChatStore {
         assistant,
         buildPlan({
           tool,
-          modelName: getModel(modelId.value).name,
+          modelName: usesApi(tool) ? `${chosen.name}（${platformOf(chosen.platformId).name}，自动选择）` : getModel(modelId.value).name,
           ratioLabel,
           resolution: resolution.value,
           count: tool === 'grid' ? 1 : count.value,
@@ -571,6 +674,8 @@ export function createChatStore(): ChatStore {
 
   function stop() {
     runToken += 1
+    requests.abort()
+    requests = new AbortController()
     busy.value = false
     const chat = chats.value.find((item) => item.id === activeId.value)
     const last = [...(chat?.messages ?? [])].reverse().find((message) => message.role === 'assistant')
@@ -783,6 +888,7 @@ export function createChatStore(): ChatStore {
       pendingTool.value = tool
     },
     openEditor(image: ImageAsset, tool: ToolId) {
+      if (usesApi(tool)) assignModel(tool)
       editor.value = {
         tool,
         prompt: '',
@@ -806,5 +912,34 @@ export function createChatStore(): ChatStore {
       lightbox.value = null
     },
     shiftLightbox,
+    settingsOpen,
+    connectedIds,
+    openSettings() {
+      settingsOpen.value = true
+      sidebarOpen.value = false
+    },
+    closeSettings() {
+      settingsOpen.value = false
+    },
+    apiKey(platformId: string) {
+      return apiConfigs.value[platformId]?.apiKey ?? ''
+    },
+    baseUrl,
+    saveApi(platformId: string, key: string, url: string) {
+      const next = { ...apiConfigs.value }
+      const apiKey = key.trim()
+      if (!apiKey) delete next[platformId]
+      else next[platformId] = { apiKey, baseUrl: url.trim() || platformOf(platformId).defaultBaseUrl }
+      apiConfigs.value = next
+      persistApi()
+    },
+    clearApi(platformId: string) {
+      const next = { ...apiConfigs.value }
+      delete next[platformId]
+      apiConfigs.value = next
+      persistApi()
+    },
+    modelFor,
+    requestImages,
   }) as ChatStore
 }

@@ -5,9 +5,10 @@ import {
   estimateCredits,
   FRAME_RATIOS,
   getModel,
-  MODELS,
   ratioValue,
   TOOL_META,
+  usesApi,
+  normalizeResolution,
 } from '../lib/catalog'
 import {
   composeImage,
@@ -72,6 +73,7 @@ let drag: null | {
 
 const editor = computed(() => store.editor)
 const tool = computed(() => editor.value?.tool ?? 'redraw')
+const autoModel = computed(() => (usesApi(tool.value) ? store.modelFor(tool.value) : null))
 const model = computed(() => getModel(modelId.value))
 const needsPaint = computed(() => tool.value === 'redraw' || tool.value === 'erase' || tool.value === 'annotate')
 const generative = computed(() => TOOL_META[tool.value].generative)
@@ -122,7 +124,8 @@ watch(
   async (value) => {
     if (!value) return
     prompt.value = value.prompt
-    modelId.value = store.modelId
+    const chosen = store.modelFor(value.tool)
+    modelId.value = chosen?.id ?? store.modelId
     resolution.value = model.value.resolutions.includes(store.resolution)
       ? store.resolution
       : model.value.resolutions[model.value.resolutions.length - 1]
@@ -285,6 +288,20 @@ function onPixelWidth(event: Event) {
   pixelW.value = next
 }
 
+async function markedSource(sourceUrl: string): Promise<string> {
+  const canvas = paintRef.value
+  if (!canvas || maskIsEmpty(canvas)) return sourceUrl
+  const image = await loadImage(sourceUrl)
+  const board = document.createElement('canvas')
+  board.width = image.width
+  board.height = image.height
+  const ctx = board.getContext('2d')
+  if (!ctx) return sourceUrl
+  ctx.drawImage(image, 0, 0, image.width, image.height)
+  ctx.drawImage(canvas, 0, 0, image.width, image.height)
+  return board.toDataURL('image/jpeg', 0.86)
+}
+
 function defaultPrompt(current: ToolId): string {
   if (current === 'redraw') return '按涂抹区域重绘'
   if (current === 'annotate') return '标注重点区域'
@@ -311,7 +328,26 @@ async function apply() {
     else if (current.tool === 'resize') urls.push(await resizeImage(current.sourceUrl, pixelW.value, pixelH.value))
     else if (current.tool === 'split') urls.push(...(await sliceGrid(current.sourceUrl, split.value)))
     else if (current.tool === 'cutout') urls.push(await cutoutImage(current.sourceUrl))
-    else {
+    else if (usesApi(current.tool)) {
+      const chosen = store.modelFor(current.tool)
+      if (!chosen) throw new Error('请先在左下角设置里接入平台 API。')
+      let text = prompt.value.trim() || defaultPrompt(current.tool)
+      if (current.tool === 'relight') text += `\n主光方向 ${direction.value}，亮度 ${brightness.value}，色温 ${temperature.value}，轮廓光 ${rim.value}。`
+      if (current.tool === 'angle') text += `\n水平旋转 ${yaw.value} 度，倾斜 ${pitch.value} 度，远近 ${zoom.value}，广角 ${wide.value}。`
+      const sourceUrl = needsPaint.value ? await markedSource(current.sourceUrl) : current.sourceUrl
+      urls.push(
+        ...(await store.requestImages({
+          modelId: chosen.id,
+          tool: current.tool,
+          prompt: text,
+          ratio: current.tool === 'outpaint' ? ratio.value : '1:1',
+          resolution: normalizeResolution(chosen.id, resolution.value),
+          count: current.tool === 'enhance' ? 1 : count.value,
+          quality: quality.value,
+          sourceUrl,
+        })),
+      )
+    } else {
       const total = generative.value ? count.value : 1
       for (let index = 0; index < total; index += 1) {
         urls.push(
@@ -353,8 +389,8 @@ async function apply() {
       transparent: current.tool === 'cutout',
       grid: null,
     })
-  } catch {
-    error.value = '这次处理没有完成，请再试一次。'
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : '这次处理没有完成，请再试一次。'
   } finally {
     working.value = false
   }
@@ -503,13 +539,13 @@ async function apply() {
             </button>
           </div>
           <p v-if="tool === 'cutout'" class="text-sm leading-6 text-stone-500">会从画面边缘开始去掉与背景接近的颜色。生成后请放大检查头发和透明边缘。</p>
-          <template v-if="generative">
-            <label class="flex items-center justify-between text-sm">
+          <template v-if="usesApi(tool)">
+            <div v-if="autoModel" class="flex items-center justify-between text-sm">
               <span class="text-stone-500">模型</span>
-              <select v-model="modelId" class="max-w-[180px] rounded-lg border border-line bg-white px-2 py-1">
-                <option v-for="item in MODELS" :key="item.id" :value="item.id">{{ item.name }}</option>
-              </select>
-            </label>
+              <span>{{ autoModel.name }}</span>
+            </div>
+            <p v-else class="text-sm leading-6 text-stone-500">请先在左下角设置里接入平台 API。接入后会按这个工具自动选择内置模型。</p>
+            <template v-if="autoModel">
             <label class="flex items-center justify-between text-sm">
               <span class="text-stone-500">清晰度</span>
               <select v-model="resolution" class="rounded-lg border border-line bg-white px-2 py-1">
@@ -528,9 +564,10 @@ async function apply() {
                 <option v-for="item in model.qualities" :key="item" :value="item">{{ item }}</option>
               </select>
             </label>
+            </template>
           </template>
           <p v-if="error" class="text-sm text-ember">{{ error }}</p>
-          <button class="mt-auto rounded-full bg-ember py-2 text-sm font-medium text-white disabled:opacity-50" :disabled="working" @click="apply">
+          <button class="mt-auto rounded-full bg-ember py-2 text-sm font-medium text-white disabled:opacity-50" :disabled="working || (usesApi(tool) && !autoModel)" @click="apply">
             {{ working ? '处理中' : actionLabel }}
           </button>
         </div>

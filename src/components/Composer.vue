@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { COMMANDS, MODELS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
+import { COMMANDS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
 import { useChat } from '../lib/store'
 import type { ImageAsset, Resolution, ToolId } from '../types'
 
@@ -28,6 +28,7 @@ const mentionItems = computed(() => {
   if (mentionQuery.value === null) return []
   return gallery.value.filter((image) => image.label.includes(mentionQuery.value!))
 })
+const autoModel = computed(() => store.modelFor('generate'))
 const canSend = computed(() => Boolean(store.draft.trim() || store.attachments.length || store.pendingTool))
 
 watch(
@@ -188,9 +189,12 @@ function onResolution(event: Event) {
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="fileRef?.click()">图片</button>
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="insert('/')">/</button>
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" :disabled="!gallery.length" @click="insert('@')">@</button>
-        <select v-model="store.modelId" class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="模型">
-          <option v-for="item in MODELS" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
+        <button
+          class="max-w-44 truncate rounded-full border border-line bg-white px-2.5 py-1 text-xs"
+          @click="store.openSettings()"
+        >
+          {{ autoModel ? `自动 · ${autoModel.name}` : '未接入模型' }}
+        </button>
         <select v-model="store.ratio" class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="比例">
           <option v-for="item in RATIOS" :key="item" :value="item">{{ item }}</option>
         </select>
@@ -220,6 +224,6 @@ function onResolution(event: Event) {
         </button>
       </div>
     </div>
-    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">本地预览，用来走通确认、引用和图片工具。点数不会真正扣除。</p>
+    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">已接入的平台会按任务自动选模型并调用接口。密钥只留在这台浏览器。</p>
   </div>
 </template>

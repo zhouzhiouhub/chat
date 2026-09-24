@@ -12,29 +12,87 @@ import type {
 export interface ModelOption {
   id: string
   name: string
+  platformId: string
+  apiModel: string
   resolutions: Resolution[]
   qualities: Quality[] | null
   credit: number
 }
 
+export interface PlatformOption {
+  id: string
+  name: string
+  hint: string
+  defaultBaseUrl: string
+  keyLabel: string
+}
+
+export const PLATFORMS: PlatformOption[] = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    hint: '图片生成与编辑',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    keyLabel: 'API Key',
+  },
+  {
+    id: 'volcengine',
+    name: '火山方舟',
+    hint: 'Seedream 图片生成',
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    keyLabel: 'API Key',
+  },
+  {
+    id: 'google',
+    name: 'Google Gemini',
+    hint: 'Nano Banana 图片生成',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
+    keyLabel: 'API Key',
+  },
+]
+
 export const MODELS: ModelOption[] = [
   {
     id: 'seedream',
     name: 'Seedream 5.0 Pro',
+    platformId: 'volcengine',
+    apiModel: 'doubao-seedream-5-0-pro-260628',
     resolutions: ['1K', '2K'],
     qualities: null,
     credit: 8,
   },
   {
+    id: 'seedream-lite',
+    name: 'Seedream 5.0 Lite',
+    platformId: 'volcengine',
+    apiModel: 'doubao-seedream-5-0-260128',
+    resolutions: ['2K', '4K'],
+    qualities: null,
+    credit: 6,
+  },
+  {
     id: 'banana',
-    name: 'Banana Pro',
+    name: 'Nano Banana Pro',
+    platformId: 'google',
+    apiModel: 'gemini-3-pro-image',
     resolutions: ['1K', '2K', '4K'],
     qualities: null,
-    credit: 10,
+    credit: 12,
+  },
+  {
+    id: 'banana-2',
+    name: 'Nano Banana 2',
+    platformId: 'google',
+    apiModel: 'gemini-3.1-flash-image',
+    resolutions: ['1K', '2K', '4K'],
+    qualities: null,
+    credit: 8,
   },
   {
     id: 'gpt-image-2',
     name: 'GPT Image 2',
+    platformId: 'openai',
+    apiModel: 'gpt-image-2',
     resolutions: ['1K', '2K', '4K'],
     qualities: null,
     credit: 14,
@@ -42,18 +100,59 @@ export const MODELS: ModelOption[] = [
   {
     id: 'flare',
     name: 'GPT Image 2.5 Flare',
+    platformId: 'openai',
+    apiModel: 'gpt-image-2.5-flare',
     resolutions: ['1K', '2K', '4K'],
     qualities: ['低', '中', '高', '超高', '极致'],
-    credit: 18,
+    credit: 16,
   },
   {
     id: 'sunburst',
     name: 'GPT Image 2.5 Sunburst',
+    platformId: 'openai',
+    apiModel: 'gpt-image-2.5-sunburst',
     resolutions: ['1K', '2K', '4K'],
     qualities: ['低', '中', '高', '超高', '极致'],
-    credit: 18,
+    credit: 22,
   },
 ]
+
+const MODEL_PREFERENCE: Record<ToolId, string[]> = {
+  generate: ['banana-2', 'flare', 'seedream', 'banana', 'gpt-image-2', 'seedream-lite', 'sunburst'],
+  grid: ['seedream', 'banana', 'sunburst', 'flare', 'banana-2', 'gpt-image-2', 'seedream-lite'],
+  crop: [],
+  angle: ['seedream', 'banana', 'gpt-image-2', 'flare', 'sunburst', 'banana-2'],
+  redraw: ['gpt-image-2', 'banana', 'seedream', 'flare', 'sunburst', 'banana-2'],
+  relight: ['sunburst', 'flare', 'banana', 'seedream', 'gpt-image-2', 'banana-2'],
+  outpaint: ['gpt-image-2', 'banana', 'seedream', 'flare', 'sunburst', 'banana-2'],
+  erase: ['gpt-image-2', 'banana', 'seedream', 'flare', 'sunburst'],
+  annotate: [],
+  enhance: ['sunburst', 'gpt-image-2', 'banana', 'seedream', 'flare', 'banana-2'],
+  resize: [],
+  cutout: [],
+  split: [],
+}
+
+export function usesApi(tool: ToolId): boolean {
+  return MODEL_PREFERENCE[tool].length > 0
+}
+
+export function chooseModel(tool: ToolId, connectedPlatformIds: string[]): ModelOption | null {
+  const connected = new Set(connectedPlatformIds)
+  for (const id of MODEL_PREFERENCE[tool]) {
+    const model = MODELS.find((item) => item.id === id)
+    if (model && connected.has(model.platformId)) return model
+  }
+  return null
+}
+
+export function platformOf(platformId: string): PlatformOption {
+  return PLATFORMS.find((item) => item.id === platformId) ?? PLATFORMS[0]
+}
+
+export function modelsForPlatform(platformId: string): ModelOption[] {
+  return MODELS.filter((item) => item.platformId === platformId)
+}
 
 export const RATIOS: AspectRatio[] = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '自动']
 

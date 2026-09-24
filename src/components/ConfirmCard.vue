@@ -5,7 +5,7 @@ import {
   estimateCredits,
   FRAME_RATIOS,
   getModel,
-  MODELS,
+  platformOf,
   RATIOS,
   roleLabel,
   TOOL_META,
@@ -69,17 +69,10 @@ function onEnhance(event: Event) {
     <p v-else-if="spec.status === 'cancelled'" class="px-4 py-3 text-sm text-stone-500">这次没有调用模型。</p>
 
     <div v-else class="divide-y divide-line text-sm">
-      <label v-if="TOOL_META[spec.tool].generative" class="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div v-if="TOOL_META[spec.tool].generative" class="flex items-center justify-between gap-3 px-4 py-2.5">
         <span class="text-stone-500">模型</span>
-        <select
-          class="max-w-[220px] rounded-lg border border-line bg-white px-2 py-1"
-          :disabled="locked"
-          :value="spec.modelId"
-          @change="emit('patch', { modelId: valueOf($event) })"
-        >
-          <option v-for="item in MODELS" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
+        <span class="text-right">{{ model.name }} · {{ platformOf(model.platformId).name }}</span>
+      </div>
       <label v-if="showRatio" class="flex items-center justify-between gap-3 px-4 py-2.5">
         <span class="text-stone-500">比例</span>
         <select

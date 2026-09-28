@@ -7,9 +7,9 @@ import type { ImageAsset, ToolId } from '../types'
 
 const store = useChat()
 const box = ref<HTMLTextAreaElement | null>(null)
-const fileRef = ref<HTMLInputElement | null>(null)
 const slashIndex = ref(0)
 const mentionIndex = ref(0)
+const modelOpen = ref(false)
 
 const gallery = computed(() => store.active?.messages.flatMap((message) => message.images) ?? [])
 const slashQuery = computed(() => {
@@ -40,6 +40,7 @@ const pickedModel = computed(() => {
   const model = getModel(store.modelId)
   return model.id === store.modelId ? model : null
 })
+const modelLabel = computed(() => pickedModel.value?.name ?? 'Auto')
 const showImageOptions = computed(() => !pickedModel.value || pickedModel.value.kind === 'image')
 const canSend = computed(() => Boolean(store.draft.trim() || store.attachments.length || store.pendingTool))
 
@@ -60,6 +61,12 @@ function focusInput() {
   box.value?.focus()
 }
 
+function chooseModel(id: string) {
+  store.modelId = id
+  modelOpen.value = false
+  focusInput()
+}
+
 function chooseCommand(tool: ToolId) {
   store.draft = store.draft.replace(/\/[^\s/]*$/, '').trimEnd()
   store.setPendingTool(tool)
@@ -69,12 +76,6 @@ function chooseCommand(tool: ToolId) {
 function chooseImage(image: ImageAsset) {
   store.draft = store.draft.replace(/@[^\s@]*$/, '').trimEnd()
   store.quoteImage(image)
-  focusInput()
-}
-
-function insert(token: string) {
-  const prefix = store.draft && !store.draft.endsWith(' ') ? `${store.draft} ` : store.draft
-  store.draft = `${prefix}${token}`
   focusInput()
 }
 
@@ -108,12 +109,6 @@ function onKeydown(event: KeyboardEvent) {
     if (store.busy) return
     void store.send()
   }
-}
-
-async function onFiles(event: Event) {
-  const input = event.target as HTMLInputElement
-  await store.addFiles([...(input.files ?? [])])
-  input.value = ''
 }
 
 async function addTransferImages(files: File[], srcs: string[]) {
@@ -214,25 +209,40 @@ async function onDrop(event: DragEvent) {
         @keydown="onKeydown"
       />
 
-      <div class="flex flex-wrap items-center gap-1.5 px-2 pt-1 pb-2">
-        <input ref="fileRef" class="hidden" type="file" accept="image/*" multiple @change="onFiles" />
-        <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="fileRef?.click()">图片</button>
-        <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="insert('/')">/</button>
-        <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" :disabled="!gallery.length" @click="insert('@')">@</button>
-        <select
-          v-if="modelGroups.length"
-          v-model="store.modelId"
-          class="max-w-56 truncate rounded-full border border-line bg-white px-2 py-1 text-xs"
-          aria-label="模型"
-        >
-          <option value="auto">Auto</option>
-          <optgroup v-for="group in modelGroups" :key="group.id" :label="group.name">
-            <option v-for="model in group.models" :key="model.id" :value="model.id">
-              {{ model.name }}
-            </option>
-          </optgroup>
-        </select>
-        <button v-else class="rounded-full border border-line bg-white px-2.5 py-1 text-xs" @click="store.openSettings()">未接入模型</button>
+      <div class="flex flex-wrap items-center gap-1.5 px-3 pt-1 pb-2">
+        <div v-if="modelGroups.length" class="relative">
+          <button
+            class="max-w-56 truncate rounded-full border border-white bg-white px-2 py-1 text-xs text-stone-500 hover:text-ink"
+            aria-label="模型"
+            :aria-expanded="modelOpen"
+            @click="modelOpen = !modelOpen"
+          >
+            {{ modelLabel }}
+          </button>
+          <button v-if="modelOpen" class="fixed inset-0 z-20 cursor-default" aria-label="关闭模型" @click="modelOpen = false" />
+          <div v-if="modelOpen" class="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-52 overflow-auto rounded-2xl border border-line bg-white p-1 shadow-lg">
+            <button
+              class="block w-full rounded-lg px-2 py-1.5 text-left text-xs"
+              :class="store.modelId === 'auto' ? 'bg-sand' : 'hover:bg-sand'"
+              @click="chooseModel('auto')"
+            >
+              Auto
+            </button>
+            <div v-for="group in modelGroups" :key="group.id" class="mt-1">
+              <p class="px-2 pt-1 text-[11px] text-stone-400">{{ group.name }}</p>
+              <button
+                v-for="model in group.models"
+                :key="model.id"
+                class="block w-full truncate rounded-lg px-2 py-1.5 text-left text-xs"
+                :class="store.modelId === model.id ? 'bg-sand' : 'hover:bg-sand'"
+                @click="chooseModel(model.id)"
+              >
+                {{ model.name }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <button v-else class="rounded-full border border-white bg-white px-2 py-1 text-xs text-stone-500 hover:text-ink" @click="store.openSettings()">未接入模型</button>
         <span class="flex-1" />
         <button
           v-if="store.busy"

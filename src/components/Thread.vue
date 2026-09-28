@@ -141,12 +141,6 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
               <i class="h-1.5 w-1.5 animate-pulse rounded-full bg-stone-400 [animation-delay:150ms]" />
               <i class="h-1.5 w-1.5 animate-pulse rounded-full bg-stone-400 [animation-delay:300ms]" />
             </span>
-            <ol v-if="message.plan.length" class="mt-3 space-y-1.5 text-sm text-stone-600">
-              <li v-for="(step, index) in message.plan" :key="`${message.id}-${index}`" class="flex gap-2">
-                <span class="mt-0.5 text-stone-400">{{ index + 1 }}</span>
-                <span>{{ step }}</span>
-              </li>
-            </ol>
             <ConfirmCard
               v-if="message.confirm"
               :spec="message.confirm"

@@ -44,8 +44,7 @@ function clear(platformId: string) {
 <template>
   <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="mx-auto w-full max-w-2xl px-4 py-6">
-      <button class="text-sm text-stone-500 hover:text-ink" @click="store.closeSettings()">返回对话</button>
-      <h2 class="mt-3 font-serif text-3xl">API 配置</h2>
+      <h2 class="font-serif text-3xl">API 配置</h2>
       <p class="mt-2 text-sm leading-6 text-stone-500">
         密钥只保存在这台浏览器。
       </p>

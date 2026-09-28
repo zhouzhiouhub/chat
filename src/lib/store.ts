@@ -1110,6 +1110,7 @@ export function createChatStore(): ChatStore {
       const currentChat = chats.value.find((chat) => chat.id === activeId.value)
       if (currentChat && currentChat.messages.length === 0) {
         sidebarOpen.value = false
+        settingsOpen.value = false
         return
       }
       const chat = emptyChat()
@@ -1119,11 +1120,13 @@ export function createChatStore(): ChatStore {
       attachments.value = []
       pendingTool.value = null
       sidebarOpen.value = false
+      settingsOpen.value = false
       persist()
     },
     selectChat(id: string) {
       activeId.value = id
       sidebarOpen.value = false
+      settingsOpen.value = false
       persist()
     },
     deleteChat(id: string) {

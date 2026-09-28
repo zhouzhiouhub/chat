@@ -106,14 +106,28 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
                 placeholder="可粘贴图片"
                 @paste="onEditPaste(message, $event)"
               />
-              <div class="mt-2 flex justify-end gap-2">
-                <button class="rounded-full px-3 py-1.5 text-xs text-stone-500 hover:bg-sand" @click="editingId = null">取消</button>
+              <div class="mt-2 flex justify-end gap-1">
                 <button
-                  class="rounded-full bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-30"
+                  class="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-sand"
+                  aria-label="取消"
+                  title="取消"
+                  @click="editingId = null"
+                >
+                  <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+                <button
+                  class="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-white disabled:opacity-30"
                   :disabled="!editText.trim() || store.busy"
+                  aria-label="重新发送"
+                  title="重新发送"
                   @click="submitEdit(message)"
                 >
-                  重新发送
+                  <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 19V5" />
+                    <path d="m6 11 6-6 6 6" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -121,11 +135,16 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
               <div class="rounded-[20px] bg-[#ebe6dc] px-4 py-2.5 text-sm leading-6 whitespace-pre-wrap">{{ message.text }}</div>
               <div v-if="latestUserId === message.id" class="mt-1 flex justify-end">
                 <button
-                  class="rounded-full px-2 py-1 text-xs text-stone-500 hover:bg-sand disabled:opacity-30"
+                  class="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-sand disabled:opacity-30"
                   :disabled="store.busy"
+                  aria-label="编辑"
+                  title="编辑"
                   @click="startEdit(message)"
                 >
-                  编辑
+                  <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
                 </button>
               </div>
             </template>

@@ -246,18 +246,27 @@ async function onDrop(event: DragEvent) {
         <span class="flex-1" />
         <button
           v-if="store.busy"
-          class="rounded-full bg-ink px-4 py-1.5 text-sm text-white"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white"
+          aria-label="停止"
+          title="停止"
           @click="store.stop()"
         >
-          停止
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="1.5" />
+          </svg>
         </button>
         <button
           v-else
-          class="rounded-full bg-ink px-4 py-1.5 text-sm text-white disabled:opacity-30"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white disabled:opacity-30"
           :disabled="!canSend"
+          aria-label="发送"
+          title="发送"
           @click="store.send()"
         >
-          发送
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19V5" />
+            <path d="m6 11 6-6 6 6" />
+          </svg>
         </button>
       </div>
     </div>

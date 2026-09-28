@@ -5,6 +5,10 @@ const PLATFORMS = {
   claude: ['https://api.anthropic.com', '/v1'],
   deepseek: ['https://api.deepseek.com', ''],
   kimi: ['https://api.moonshot.cn', '/v1'],
+  perplexity: ['https://api.perplexity.ai', ''],
+  ernie: ['https://qianfan.baidubce.com', '/v2'],
+  zhipu: ['https://open.bigmodel.cn', '/api/paas/v4'],
+  qwen: ['https://dashscope.aliyuncs.com', '/compatible-mode/v1'],
 }
 
 const FORWARDED = ['authorization', 'content-type', 'x-goog-api-key', 'x-api-key', 'anthropic-version']

@@ -34,6 +34,26 @@ const proxy = {
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/proxy\/kimi/, '/v1'),
   },
+  '/proxy/perplexity': {
+    target: 'https://api.perplexity.ai',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/proxy\/perplexity/, ''),
+  },
+  '/proxy/ernie': {
+    target: 'https://qianfan.baidubce.com',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/proxy\/ernie/, '/v2'),
+  },
+  '/proxy/zhipu': {
+    target: 'https://open.bigmodel.cn',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/proxy\/zhipu/, '/api/paas/v4'),
+  },
+  '/proxy/qwen': {
+    target: 'https://dashscope.aliyuncs.com',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/proxy\/qwen/, '/compatible-mode/v1'),
+  },
 }
 
 async function forwardUpstream(req: IncomingMessage, res: ServerResponse) {

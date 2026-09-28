@@ -59,6 +59,14 @@ export const PLATFORMS: PlatformOption[] = [
     site: 'https://www.anthropic.com/',
   },
   {
+    id: 'perplexity',
+    name: 'Perplexity',
+    hint: ' ',
+    defaultBaseUrl: 'https://api.perplexity.ai',
+    keyLabel: 'API Key',
+    site: 'https://www.perplexity.ai/',
+  },
+  {
     id: 'deepseek',
     name: 'DeepSeek',
     hint: ' ',
@@ -76,11 +84,35 @@ export const PLATFORMS: PlatformOption[] = [
   },
   {
     id: 'volcengine',
-    name: '火山方舟',
+    name: '豆包',
     hint: ' ',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     keyLabel: 'API Key',
-    site: 'https://www.volcengine.com/product/ark',
+    site: 'https://www.doubao.com/',
+  },
+  {
+    id: 'ernie',
+    name: '文心一言',
+    hint: ' ',
+    defaultBaseUrl: 'https://qianfan.baidubce.com/v2',
+    keyLabel: 'API Key',
+    site: 'https://yiyan.baidu.com/',
+  },
+  {
+    id: 'zhipu',
+    name: '智谱清言',
+    hint: ' ',
+    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    keyLabel: 'API Key',
+    site: 'https://chatglm.cn/',
+  },
+  {
+    id: 'qwen',
+    name: '通义千问',
+    hint: ' ',
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    keyLabel: 'API Key',
+    site: 'https://tongyi.aliyun.com/',
   },
   {
     id: 'compatible',
@@ -172,6 +204,25 @@ export const MODELS: ModelOption[] = [
   chatModel('kimi-k2.6', 'Kimi K2.6', 'kimi'),
   chatModel('kimi-k2.7-code', 'Kimi K2.7 Code', 'kimi'),
   chatModel('kimi-k2.7-code-highspeed', 'Kimi K2.7 Code HighSpeed', 'kimi'),
+
+  chatModel('sonar-pro', 'Sonar Pro', 'perplexity'),
+  chatModel('sonar', 'Sonar', 'perplexity'),
+  chatModel('sonar-reasoning-pro', 'Sonar Reasoning Pro', 'perplexity'),
+  chatModel('sonar-deep-research', 'Sonar Deep Research', 'perplexity'),
+
+  chatModel('ernie-5.1', 'ERNIE 5.1', 'ernie'),
+  chatModel('ernie-5.0', 'ERNIE 5.0', 'ernie'),
+  chatModel('ernie-4.5-turbo-128k', 'ERNIE 4.5 Turbo', 'ernie'),
+
+  chatModel('zhipu-glm-5.2', 'GLM-5.2', 'zhipu', 'glm-5.2'),
+  chatModel('zhipu-glm-4.7', 'GLM-4.7', 'zhipu', 'glm-4.7'),
+  chatModel('zhipu-glm-4.5-air', 'GLM-4.5 Air', 'zhipu', 'glm-4.5-air'),
+  chatModel('zhipu-glm-4.7-flash', 'GLM-4.7 Flash', 'zhipu', 'glm-4.7-flash'),
+
+  chatModel('qwen3.8-max', 'Qwen3.8 Max', 'qwen'),
+  chatModel('qwen-plus', 'Qwen Plus', 'qwen'),
+  chatModel('qwen-max', 'Qwen Max', 'qwen'),
+  chatModel('qwen-turbo', 'Qwen Turbo', 'qwen'),
 ]
 
 const MODEL_PREFERENCE: Record<ToolId, string[]> = {
@@ -196,6 +247,10 @@ const CHAT_PREFERENCE = [
   'gemini-3.8-flash',
   'deepseek-v4-pro',
   'kimi-k3',
+  'zhipu-glm-5.2',
+  'qwen3.8-max',
+  'ernie-5.1',
+  'sonar-pro',
   'seed-2.1-pro',
   'gpt-5.6-terra',
   'claude-sonnet-5',

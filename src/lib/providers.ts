@@ -68,10 +68,14 @@ async function statusOf(platformId: string, apiKey: string, baseUrl: string, pat
 }
 
 export async function platformReturns200(platformId: string, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
-  return (await statusOf(platformId, apiKey, baseUrl, '/models', signal)) === 200
+  const path = platformId === 'perplexity' ? '/v1/models' : '/models'
+  return (await statusOf(platformId, apiKey, baseUrl, path, signal)) === 200
 }
 
 export async function modelReturns200(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
+  if (model.platformId === 'perplexity' || model.platformId === 'ernie') {
+    return platformReturns200(model.platformId, apiKey, baseUrl, signal)
+  }
   return (await statusOf(model.platformId, apiKey, baseUrl, `/models/${encodeURIComponent(model.apiModel)}`, signal)) === 200
 }
 

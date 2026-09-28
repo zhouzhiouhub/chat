@@ -442,17 +442,16 @@ export function createChatStore(): ChatStore {
     }
   }
 
-  async function ensureReady(model: ModelOption): Promise<'ok' | 'platform' | 'model'> {
+  async function ensureReady(model: ModelOption): Promise<boolean> {
     const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
     const url = baseUrl(model.platformId)
-    if (!(await platformReturns200(model.platformId, key, url, requests.signal))) return 'platform'
-    if (!(await modelReturns200(model, key, url, requests.signal))) return 'model'
-    return 'ok'
+    if (!(await platformReturns200(model.platformId, key, url, requests.signal))) return false
+    return modelReturns200(model, key, url, requests.signal)
   }
 
-  function readyText(model: ModelOption, ready: 'platform' | 'model'): string {
-    if (ready === 'platform') return `${platformOf(model.platformId).name} 接口没有返回 200，已跳过该平台下的模型。`
-    return `${model.name} 没有返回 200，这次没有继续请求。`
+  function unavailableText(kind: 'chat' | 'image'): string {
+    const name = kind === 'chat' ? '对话' : '图片'
+    return `没有可用的${name}模型。请在设置里检查密钥，或在输入框里改选一个模型。`
   }
 
   async function pickReadyModel(kind: 'chat' | 'image'): Promise<ModelOption | null> {
@@ -687,21 +686,17 @@ export function createChatStore(): ChatStore {
       if (plainChat) {
         let model = selected?.kind === 'chat' ? selected : null
         if (model) {
-          assistant.plan = [`先确认 ${platformOf(model.platformId).name} 接口，通过后再检查 ${model.name}`]
-          bump()
           const ready = await ensureReady(model)
           if (my !== runToken) return
-          if (ready !== 'ok') {
-            assistant.text = readyText(model, ready)
+          if (!ready) {
+            assistant.text = unavailableText('chat')
             return
           }
         } else {
-          assistant.plan = ['先确认平台接口，通过后再检查该平台下的对话模型']
-          bump()
           model = await pickReadyModel('chat')
           if (my !== runToken) return
           if (!model) {
-            assistant.text = '已接入的对话模型都没有返回 200。请检查密钥，或在输入框里改选一个模型。'
+            assistant.text = unavailableText('chat')
             return
           }
         }
@@ -730,21 +725,17 @@ export function createChatStore(): ChatStore {
       }
       let imageModel = selected?.kind === 'image' ? selected : null
       if (usesApi(tool) && imageModel) {
-        assistant.plan = [`先确认 ${platformOf(imageModel.platformId).name} 接口，通过后再检查 ${imageModel.name}`]
-        bump()
         const ready = await ensureReady(imageModel)
         if (my !== runToken) return
-        if (ready !== 'ok') {
-          assistant.text = readyText(imageModel, ready)
+        if (!ready) {
+          assistant.text = unavailableText('image')
           return
         }
       } else if (usesApi(tool)) {
-        assistant.plan = ['先确认平台接口，通过后再检查该平台下的图片模型']
-        bump()
         imageModel = await pickReadyModel('image')
         if (my !== runToken) return
         if (!imageModel) {
-          assistant.text = '已接入的图片模型都没有返回 200。请检查密钥，或在输入框里改选一个模型。'
+          assistant.text = unavailableText('image')
           return
         }
       }

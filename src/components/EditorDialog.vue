@@ -132,7 +132,7 @@ watch(
     else if (usesApi(value.tool)) {
       const live = await store.pickReadyModel('image')
       modelId.value = live?.id ?? imageChoices.value[0]?.id ?? 'seedream'
-      if (!live) error.value = '已接入的图片模型都没有返回 200。'
+      if (!live) error.value = '没有可用的图片模型。请在设置里检查密钥，或改选一个模型。'
     } else modelId.value = 'seedream'
     resolution.value = model.value.resolutions.includes(store.resolution)
       ? store.resolution

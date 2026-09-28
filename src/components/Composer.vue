@@ -245,6 +245,5 @@ function onResolution(event: Event) {
         </button>
       </div>
     </div>
-    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">可以自己选模型。选自动时先确认平台接口，再检查该平台下的模型。</p>
   </div>
 </template>

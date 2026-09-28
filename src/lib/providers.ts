@@ -74,10 +74,10 @@ export async function modelReturns200(model: ModelOption, apiKey: string, baseUr
 
 async function assertReady(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal) {
   if (!(await platformReturns200(model.platformId, apiKey, baseUrl, signal))) {
-    throw new Error(`${platformOf(model.platformId).name} 接口没有返回 200，已跳过该平台下的模型。`)
+    throw new Error('没有可用模型。请在设置里检查密钥，或改选一个模型。')
   }
   if (!(await modelReturns200(model, apiKey, baseUrl, signal))) {
-    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
+    throw new Error('没有可用模型。请在设置里检查密钥，或改选一个模型。')
   }
 }
 

@@ -27,32 +27,57 @@ const QUALITY_API: Record<Quality, string> = {
 }
 
 function endpoint(model: ModelOption, baseUrl: string, path: string): string {
-  if (model.platformId === 'compatible') return `/proxy/upstream${path}`
+  return platformEndpoint(model.platformId, baseUrl, path)
+}
+
+function platformEndpoint(platformId: string, baseUrl: string, path: string): string {
+  if (platformId === 'compatible') return `/proxy/upstream${path}`
   const normalized = baseUrl.replace(/\/$/, '')
-  const official = platformOf(model.platformId).defaultBaseUrl.replace(/\/$/, '')
-  if (normalized === official) return `/proxy/${model.platformId}${path}`
+  const official = platformOf(platformId).defaultBaseUrl.replace(/\/$/, '')
+  if (normalized && normalized === official) return `/proxy/${platformId}${path}`
   return `${normalized}${path}`
 }
 
-export async function modelReturns200(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
-  if (!apiKey.trim()) return false
-  if (model.platformId === 'compatible' && !baseUrl.trim()) return false
+function authHeaders(platformId: string, apiKey: string, baseUrl: string): Record<string, string> {
   const headers: Record<string, string> = {}
-  if (model.platformId === 'google') headers['x-goog-api-key'] = apiKey
-  else if (model.platformId === 'claude') {
+  if (platformId === 'google') headers['x-goog-api-key'] = apiKey
+  else if (platformId === 'claude') {
     headers['x-api-key'] = apiKey
     headers['anthropic-version'] = '2023-06-01'
   } else headers.Authorization = `Bearer ${apiKey}`
-  if (model.platformId === 'compatible') headers['x-upstream-base'] = baseUrl.trim()
+  if (platformId === 'compatible') headers['x-upstream-base'] = baseUrl.trim()
+  return headers
+}
+
+async function statusOf(platformId: string, apiKey: string, baseUrl: string, path: string, signal?: AbortSignal): Promise<number | null> {
+  if (!apiKey.trim()) return null
+  if (platformId === 'compatible' && !baseUrl.trim()) return null
   try {
-    const response = await fetch(endpoint(model, baseUrl, `/models/${encodeURIComponent(model.apiModel)}`), {
+    const response = await fetch(platformEndpoint(platformId, baseUrl, path), {
       method: 'GET',
-      headers,
+      headers: authHeaders(platformId, apiKey, baseUrl),
       signal,
     })
-    return response.status === 200
+    return response.status
   } catch {
-    return false
+    return null
+  }
+}
+
+export async function platformReturns200(platformId: string, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
+  return (await statusOf(platformId, apiKey, baseUrl, '/models', signal)) === 200
+}
+
+export async function modelReturns200(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
+  return (await statusOf(model.platformId, apiKey, baseUrl, `/models/${encodeURIComponent(model.apiModel)}`, signal)) === 200
+}
+
+async function assertReady(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal) {
+  if (!(await platformReturns200(model.platformId, apiKey, baseUrl, signal))) {
+    throw new Error(`${platformOf(model.platformId).name} 接口没有返回 200，已跳过该平台下的模型。`)
+  }
+  if (!(await modelReturns200(model, apiKey, baseUrl, signal))) {
+    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
   }
 }
 
@@ -224,9 +249,7 @@ function readB64(payload: unknown): string {
 export async function requestProviderImages(input: ImageRequest): Promise<string[]> {
   const model = getModel(input.modelId)
   if (!input.apiKey.trim()) throw new Error(`请先在设置里接入${platformOf(model.platformId).name}。`)
-  if (!(await modelReturns200(model, input.apiKey, input.baseUrl, input.signal))) {
-    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
-  }
+  await assertReady(model, input.apiKey, input.baseUrl, input.signal)
   const total = Math.min(4, Math.max(1, input.count))
   const urls: string[] = []
   for (let index = 0; index < total; index += 1) {
@@ -279,9 +302,7 @@ export async function requestChat(input: {
 }): Promise<string> {
   const model = getModel(input.modelId)
   if (!input.apiKey.trim()) throw new Error(`请先在设置里接入${platformOf(model.platformId).name}。`)
-  if (!(await modelReturns200(model, input.apiKey, input.baseUrl, input.signal))) {
-    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
-  }
+  await assertReady(model, input.apiKey, input.baseUrl, input.signal)
   const upstream = model.platformId === 'compatible' ? input.baseUrl.trim() : undefined
   if (model.platformId === 'compatible' && !upstream) throw new Error('请在设置里填写 OpenAI 兼容接口的地址。')
   if (model.platformId === 'google') {

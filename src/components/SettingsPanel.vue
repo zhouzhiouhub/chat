@@ -47,7 +47,7 @@ function clear(platformId: string) {
       <button class="text-sm text-stone-500 hover:text-ink" @click="store.closeSettings()">返回对话</button>
       <h2 class="mt-3 font-serif text-3xl">API 配置</h2>
       <p class="mt-2 text-sm leading-6 text-stone-500">
-        选择自动时不会指定默认模型。发送前会按已接入的模型逐个请求，只使用返回 200 的那个。手动选择的模型也会先做同样的检查。密钥只保存在这台浏览器。
+        选择自动时不会指定默认模型。会先请求平台接口，只有返回 200 的平台才继续检查它下面的模型。密钥只保存在这台浏览器。
       </p>
 
       <section v-for="platform in PLATFORMS" :key="platform.id" class="mt-5 rounded-2xl border border-line bg-white p-4">

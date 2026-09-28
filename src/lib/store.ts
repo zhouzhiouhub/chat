@@ -23,7 +23,7 @@ import {
   type ModelOption,
   type Suggestion,
 } from './catalog'
-import { modelReturns200, requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
+import { modelReturns200, platformReturns200, requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
 import { composeImage, cropToRatio, cutoutImage, downscaleFile, resizeImage, sliceGrid } from './render'
 import type {
   AspectRatio,
@@ -442,19 +442,32 @@ export function createChatStore(): ChatStore {
     }
   }
 
-  async function ensureReady(model: ModelOption): Promise<boolean> {
-    return modelReturns200(
-      model,
-      apiConfigs.value[model.platformId]?.apiKey ?? '',
-      baseUrl(model.platformId),
-      requests.signal,
-    )
+  async function ensureReady(model: ModelOption): Promise<'ok' | 'platform' | 'model'> {
+    const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
+    const url = baseUrl(model.platformId)
+    if (!(await platformReturns200(model.platformId, key, url, requests.signal))) return 'platform'
+    if (!(await modelReturns200(model, key, url, requests.signal))) return 'model'
+    return 'ok'
+  }
+
+  function readyText(model: ModelOption, ready: 'platform' | 'model'): string {
+    if (ready === 'platform') return `${platformOf(model.platformId).name} 接口没有返回 200，已跳过该平台下的模型。`
+    return `${model.name} 没有返回 200，这次没有继续请求。`
   }
 
   async function pickReadyModel(kind: 'chat' | 'image'): Promise<ModelOption | null> {
-    for (const model of modelsOfKind(kind, connectedIds.value)) {
+    const models = modelsOfKind(kind, connectedIds.value)
+    for (const platform of PLATFORMS) {
+      const group = models.filter((model) => model.platformId === platform.id)
+      if (!group.length) continue
       if (requests.signal.aborted) return null
-      if (await ensureReady(model)) return model
+      const key = apiConfigs.value[platform.id]?.apiKey ?? ''
+      const url = baseUrl(platform.id)
+      if (!(await platformReturns200(platform.id, key, url, requests.signal))) continue
+      for (const model of group) {
+        if (requests.signal.aborted) return null
+        if (await modelReturns200(model, key, url, requests.signal)) return model
+      }
     }
     return null
   }
@@ -674,15 +687,16 @@ export function createChatStore(): ChatStore {
       if (plainChat) {
         let model = selected?.kind === 'chat' ? selected : null
         if (model) {
-          assistant.plan = [`正在确认 ${model.name} 是否返回 200`]
+          assistant.plan = [`先确认 ${platformOf(model.platformId).name} 接口，通过后再检查 ${model.name}`]
           bump()
-          if (!(await ensureReady(model))) {
-            if (my !== runToken) return
-            assistant.text = `${model.name} 没有返回 200，这次没有继续请求。`
+          const ready = await ensureReady(model)
+          if (my !== runToken) return
+          if (ready !== 'ok') {
+            assistant.text = readyText(model, ready)
             return
           }
         } else {
-          assistant.plan = ['正在逐个检测对话模型，只使用返回 200 的接口']
+          assistant.plan = ['先确认平台接口，通过后再检查该平台下的对话模型']
           bump()
           model = await pickReadyModel('chat')
           if (my !== runToken) return
@@ -716,15 +730,16 @@ export function createChatStore(): ChatStore {
       }
       let imageModel = selected?.kind === 'image' ? selected : null
       if (usesApi(tool) && imageModel) {
-        assistant.plan = [`正在确认 ${imageModel.name} 是否返回 200`]
+        assistant.plan = [`先确认 ${platformOf(imageModel.platformId).name} 接口，通过后再检查 ${imageModel.name}`]
         bump()
-        if (!(await ensureReady(imageModel))) {
-          if (my !== runToken) return
-          assistant.text = `${imageModel.name} 没有返回 200，这次没有继续请求。`
+        const ready = await ensureReady(imageModel)
+        if (my !== runToken) return
+        if (ready !== 'ok') {
+          assistant.text = readyText(imageModel, ready)
           return
         }
       } else if (usesApi(tool)) {
-        assistant.plan = ['正在逐个检测图片模型，只使用返回 200 的接口']
+        assistant.plan = ['先确认平台接口，通过后再检查该平台下的图片模型']
         bump()
         imageModel = await pickReadyModel('image')
         if (my !== runToken) return

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import ConfirmCard from './ConfirmCard.vue'
 import ImageTile from './ImageTile.vue'
 import { ratioValue, resolveRatio, SUGGESTIONS } from '../lib/catalog'
 import { useChat } from '../lib/store'
-import type { AspectRatio } from '../types'
+import type { AspectRatio, Message } from '../types'
 
 const store = useChat()
 const scroller = ref<HTMLElement | null>(null)
+const editingId = ref<string | null>(null)
+const editText = ref('')
+const latestUserId = computed(() => [...(store.active?.messages ?? [])].reverse().find((item) => item.role === 'user')?.id ?? '')
 
 watch(
   () => store.pulse,
@@ -26,6 +29,18 @@ function columns(count: number): string {
   if (count <= 1) return 'grid-cols-1 max-w-xl'
   if (count === 2) return 'grid-cols-2'
   return 'sm:grid-cols-3 grid-cols-2'
+}
+
+function startEdit(message: Message) {
+  editingId.value = message.id
+  editText.value = message.text
+}
+
+async function submitEdit(message: Message) {
+  const text = editText.value
+  if (!text.trim() || store.busy) return
+  editingId.value = null
+  await store.resend(message.id, text)
 }
 </script>
 
@@ -63,7 +78,35 @@ function columns(count: number): string {
                 class="h-16 w-16 rounded-xl border border-line object-cover"
               />
             </div>
-            <div class="rounded-[20px] bg-[#ebe6dc] px-4 py-2.5 text-sm leading-6 whitespace-pre-wrap">{{ message.text }}</div>
+            <div v-if="editingId === message.id" class="w-[min(70vw,28rem)]">
+              <textarea
+                v-model="editText"
+                rows="3"
+                class="w-full rounded-[20px] border border-line bg-white px-4 py-2.5 text-sm leading-6 outline-none"
+              />
+              <div class="mt-2 flex justify-end gap-2">
+                <button class="rounded-full px-3 py-1.5 text-xs text-stone-500 hover:bg-sand" @click="editingId = null">取消</button>
+                <button
+                  class="rounded-full bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-30"
+                  :disabled="!editText.trim() || store.busy"
+                  @click="submitEdit(message)"
+                >
+                  重新发送
+                </button>
+              </div>
+            </div>
+            <template v-else>
+              <div class="rounded-[20px] bg-[#ebe6dc] px-4 py-2.5 text-sm leading-6 whitespace-pre-wrap">{{ message.text }}</div>
+              <div v-if="latestUserId === message.id" class="mt-1 flex justify-end">
+                <button
+                  class="rounded-full px-2 py-1 text-xs text-stone-500 hover:bg-sand disabled:opacity-30"
+                  :disabled="store.busy"
+                  @click="startEdit(message)"
+                >
+                  编辑
+                </button>
+              </div>
+            </template>
           </div>
         </div>
 

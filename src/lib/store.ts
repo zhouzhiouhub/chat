@@ -65,6 +65,7 @@ export interface ChatStore {
   selectChat: (id: string) => void
   deleteChat: (id: string) => void
   send: (preset?: Suggestion) => Promise<void>
+  resend: (messageId: string, text: string) => Promise<void>
   stop: () => void
   approve: (messageId: string) => Promise<void>
   cancelConfirm: (messageId: string) => void
@@ -596,8 +597,6 @@ export function createChatStore(): ChatStore {
     attachments.value = []
     pendingTool.value = null
 
-    const source = needsSource(tool) ? resolveSource(chat, refs) : null
-    const missing = needsSource(tool) && !source
     if (chat.title === '新对话') chat.title = finalText.replace(/\s+/g, ' ').slice(0, 22)
     chat.updatedAt = Date.now()
 
@@ -606,9 +605,39 @@ export function createChatStore(): ChatStore {
     chat.messages.push(user, blankMessage('assistant'))
     const assistant = chat.messages[chat.messages.length - 1]
     bump()
+    await runTurn(chat, assistant, finalText, refs, tool)
+  }
 
+  async function resend(messageId: string, text: string) {
+    if (busy.value) return
+    const next = text.trim()
+    if (!next) return
+    const chat = current()
+    const index = chat.messages.findIndex((item) => item.id === messageId && item.role === 'user')
+    if (index < 0 || chat.messages.slice(index + 1).some((item) => item.role === 'user')) return
+    const user = chat.messages[index]
+    user.text = next
+    chat.messages.splice(index + 1)
+    const refs = user.attachments.filter((item) => item.url)
+    for (const item of mentioned(next, chat)) {
+      if (!refs.some((ref) => ref.url === item.url)) refs.push(item)
+    }
+    user.attachments = refs
+    const first = chat.messages.find((item) => item.role === 'user')
+    if (first?.id === user.id) chat.title = next.replace(/\s+/g, ' ').slice(0, 22) || '新对话'
+    chat.updatedAt = Date.now()
+    const tool = inferTool(next, refs.length > 0 || hasExplicitTarget(next))
+    chat.messages.push(blankMessage('assistant'))
+    const assistant = chat.messages[chat.messages.length - 1]
+    bump()
+    await runTurn(chat, assistant, next, refs, tool)
+  }
+
+  async function runTurn(chat: Conversation, assistant: Message, finalText: string, refs: Attachment[], tool: ToolId) {
     const my = ++runToken
     busy.value = true
+    const source = needsSource(tool) ? resolveSource(chat, refs) : null
+    const missing = needsSource(tool) && !source
     try {
       if (missing) {
         assistant.text = '这个操作需要一张源图。上传图片，或输入 @ 选择已经生成的图片，并说明它是产品、角色、构图、风格还是光线参考。'
@@ -897,6 +926,7 @@ export function createChatStore(): ChatStore {
       persist()
     },
     send,
+    resend,
     stop,
     approve,
     cancelConfirm,

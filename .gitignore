@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+tmp-chrome-profile
 dist-ssr
 *.local
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import logoUrl from '../assets/kinolin-logo.svg'
 import { useChat } from '../lib/store'
 import type { Conversation } from '../types'
 
@@ -36,10 +37,7 @@ const groups = computed(() => {
       :class="store.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
       <div class="flex items-center justify-between px-4 pb-2 pt-4">
-        <div>
-          <p class="font-serif text-2xl leading-none">绘话</p>
-          <p class="mt-1 text-xs text-stone-500">图片 Agent</p>
-        </div>
+        <img :src="logoUrl" alt="kinolin" class="h-11 w-auto" />
         <button
           class="rounded-full px-2 py-1 text-sm text-stone-500 hover:bg-white md:hidden"
           @click="store.sidebarOpen = false"

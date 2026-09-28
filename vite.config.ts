@@ -81,6 +81,9 @@ function upstreamProxy(): Plugin {
 
 export default defineConfig({
   plugins: [vue(), tailwindcss(), upstreamProxy()],
-  server: { proxy },
+  server: {
+    proxy,
+    watch: { ignored: ['**/tmp-chrome-profile/**'] },
+  },
   preview: { proxy },
 })

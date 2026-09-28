@@ -140,6 +140,14 @@ async function failureMessage(response: Response): Promise<string> {
   return brief || `请求失败（${response.status}）`
 }
 
+export function switchableFailure(error: unknown): boolean {
+  if (!error || (error instanceof DOMException && error.name === 'AbortError')) return false
+  if (error instanceof Error && error.name === 'AbortError') return false
+  const message = error instanceof Error ? error.message : ''
+  if (!message || /已停止|请先在设置|没有可用模型|缺少源图/.test(message)) return false
+  return /high demand|overloaded|rate limit|too many requests|resource exhausted|quota exceeded|try again later|unavailable|容量|高负载|负载|限流|繁忙|需求量|稍后再试|稍后重试|暂时不可用|请求失败（(?:429|500|502|503|504|529)）|模型没有返回(?:文字|图片)/i.test(message)
+}
+
 async function postJson(
   url: string,
   apiKey: string,

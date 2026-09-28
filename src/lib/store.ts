@@ -24,7 +24,7 @@ import {
   type ModelOption,
   type Suggestion,
 } from './catalog'
-import { modelReturns200, platformReturns200, requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
+import { modelReturns200, platformReturns200, requestChat, requestProviderImages, switchableFailure, type ImageJob, type ImageRequest } from './providers'
 import { composeImage, cropToRatio, cutoutImage, downscaleFile, resizeImage, sliceGrid } from './render'
 import type {
   AspectRatio,
@@ -456,21 +456,86 @@ export function createChatStore(): ChatStore {
     return `没有可用的${name}模型。请在设置里检查密钥，或在输入框里改选一个模型。`
   }
 
-  async function pickReadyModel(kind: 'chat' | 'image'): Promise<ModelOption | null> {
-    const models = modelsOfKind(kind, connectedIds.value)
-    for (const platform of PLATFORMS) {
-      const group = models.filter((model) => model.platformId === platform.id)
-      if (!group.length) continue
-      if (requests.signal.aborted) return null
-      const key = apiConfigs.value[platform.id]?.apiKey ?? ''
-      const url = baseUrl(platform.id)
-      if (!(await platformReturns200(platform.id, key, url, requests.signal))) continue
-      for (const model of group) {
-        if (requests.signal.aborted) return null
-        if (await modelReturns200(model, key, url, requests.signal)) return model
-      }
+  function modelCaption(model: ModelOption, auto: boolean): string {
+    return `${model.name}（${platformOf(model.platformId).name}${auto ? '，自动选择' : ''}）`
+  }
+
+  function noteBusy(message: Message, name: string) {
+    const note = `${name} 当前繁忙`
+    if (message.plan.includes(note)) return
+    const at = message.plan.findIndex((step) => step.includes('，自动选择'))
+    if (at >= 0) message.plan.splice(at, 0, note)
+    else message.plan.push(note)
+  }
+
+  function rewriteAutoModel(message: Message, model: ModelOption, resolution: string) {
+    const at = message.plan.findIndex((step) => step.includes('，自动选择'))
+    if (at < 0) return
+    const parts = message.plan[at].split(' · ')
+    if (parts.length >= 3) {
+      parts[0] = modelCaption(model, true)
+      parts[2] = resolution
+      message.plan[at] = parts.join(' · ')
+      return
     }
-    return null
+    message.plan[at] = modelCaption(model, true)
+  }
+
+  async function pickReadyModel(kind: 'chat' | 'image'): Promise<ModelOption | null> {
+    let picked: ModelOption | null = null
+    await eachReadyModel(kind, async (model) => {
+      picked = model
+      return 'done'
+    })
+    return picked
+  }
+
+  async function eachReadyModel(
+    kind: 'chat' | 'image',
+    attempt: (model: ModelOption) => Promise<'done' | 'busy' | 'skip' | 'stop'>,
+  ): Promise<void> {
+    const models = modelsOfKind(kind, connectedIds.value)
+    const platformOk = new Map<string, boolean>()
+    const hot = new Set<string>()
+    const deferred: ModelOption[] = []
+    let calls = 0
+
+    const ready = async (model: ModelOption): Promise<boolean> => {
+      if (requests.signal.aborted) return false
+      let ok = platformOk.get(model.platformId)
+      if (ok === undefined) {
+        const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
+        ok = await platformReturns200(model.platformId, key, baseUrl(model.platformId), requests.signal)
+        platformOk.set(model.platformId, ok)
+      }
+      if (!ok || requests.signal.aborted) return false
+      const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
+      return modelReturns200(model, key, baseUrl(model.platformId), requests.signal)
+    }
+
+    const run = async (model: ModelOption): Promise<'done' | 'busy' | 'skip' | 'stop'> => {
+      if (requests.signal.aborted) return 'stop'
+      if (!(await ready(model))) return requests.signal.aborted ? 'stop' : 'skip'
+      if (calls >= 4) return 'stop'
+      calls += 1
+      return attempt(model)
+    }
+
+    for (const model of models) {
+      if (requests.signal.aborted) return
+      if (hot.has(model.platformId)) {
+        deferred.push(model)
+        continue
+      }
+      const result = await run(model)
+      if (result === 'done' || result === 'stop') return
+      if (result === 'busy') hot.add(model.platformId)
+    }
+    for (const model of deferred) {
+      if (requests.signal.aborted || calls >= 4) return
+      const result = await run(model)
+      if (result === 'done' || result === 'stop') return
+    }
   }
 
   function pickedModel(): ModelOption | null {
@@ -503,6 +568,34 @@ export function createChatStore(): ChatStore {
       signal: requests.signal,
     }
     return requestProviderImages(request)
+  }
+
+  async function generateImages(message: Message, spec: ConfirmSpec, token: number): Promise<string[] | null> {
+    if (modelId.value !== 'auto') return requestImages(specToRequest(spec))
+    let urls: string[] | null = null
+    let lastError: Error | null = null
+    await eachReadyModel('image', async (model) => {
+      if (token !== runToken) return 'stop'
+      spec.modelId = model.id
+      spec.resolution = normalizeResolution(model.id, spec.resolution)
+      rewriteAutoModel(message, model, spec.resolution)
+      bump()
+      try {
+        urls = await requestImages(specToRequest(spec))
+        return 'done'
+      } catch (error) {
+        if (token !== runToken || requests.signal.aborted) return 'stop'
+        lastError = error instanceof Error ? error : new Error('这次生成没有完成，请再试一次。')
+        if (/没有可用模型/.test(lastError.message)) return 'skip'
+        if (!switchableFailure(error)) return 'stop'
+        noteBusy(message, model.name)
+        bump()
+        return 'busy'
+      }
+    })
+    if (token !== runToken || requests.signal.aborted) return null
+    if (urls) return urls
+    throw lastError ?? new Error(unavailableText('image'))
   }
 
   function baseUrl(platformId: string): string {
@@ -543,8 +636,8 @@ export function createChatStore(): ChatStore {
     if (!usesApi(spec.tool)) await wait(720 + spec.count * 160)
     if (token !== runToken) return
     try {
-      const urls = usesApi(spec.tool) ? await requestImages(specToRequest(spec)) : await produce(spec)
-      if (token !== runToken) return
+      const urls = usesApi(spec.tool) ? await generateImages(message, spec, token) : await produce(spec)
+      if (token !== runToken || !urls) return
       const chat = current()
       const model = getModel(spec.modelId)
       const start = imagesIn(chat).length
@@ -685,38 +778,70 @@ export function createChatStore(): ChatStore {
       const selected = pickedModel()
       const plainChat = tool === 'generate' && (selected ? selected.kind === 'chat' : !isImagePrompt(finalText))
       if (plainChat) {
-        let model = selected?.kind === 'chat' ? selected : null
-        if (model) {
-          const ready = await ensureReady(model)
+        const history = chat.messages
+          .filter((item) => item.id !== assistant.id && item.text.trim())
+          .slice(-16)
+          .map((item) => ({ role: item.role, content: item.text }))
+        const manual = selected?.kind === 'chat' ? selected : null
+        if (manual) {
+          const ready = await ensureReady(manual)
           if (my !== runToken) return
           if (!ready) {
             assistant.text = unavailableText('chat')
             return
           }
-        } else {
-          model = await pickReadyModel('chat')
-          if (my !== runToken) return
-          if (!model) {
-            assistant.text = unavailableText('chat')
-            return
+          assistant.plan = [modelCaption(manual, false)]
+          try {
+            assistant.text = await requestChat({
+              modelId: manual.id,
+              messages: history,
+              apiKey: apiConfigs.value[manual.platformId]?.apiKey ?? '',
+              baseUrl: baseUrl(manual.platformId),
+              signal: requests.signal,
+            })
+          } catch (error) {
+            if (my !== runToken) return
+            assistant.text = error instanceof Error ? error.message : '这次没有回复。'
           }
+          return
         }
-        assistant.plan = [`${model.name}（${platformOf(model.platformId).name}${selected ? '' : '，自动选择'}）`]
-        try {
-          const history = chat.messages
-            .filter((item) => item.id !== assistant.id && item.text.trim())
-            .slice(-16)
-            .map((item) => ({ role: item.role, content: item.text }))
-          assistant.text = await requestChat({
-            modelId: model.id,
-            messages: history,
-            apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
-            baseUrl: baseUrl(model.platformId),
-            signal: requests.signal,
-          })
-        } catch (error) {
-          if (my !== runToken) return
-          assistant.text = error instanceof Error ? error.message : '这次没有回复。'
+        const skipped: string[] = []
+        let lastError = ''
+        let settled = false
+        await eachReadyModel('chat', async (model) => {
+          if (my !== runToken) return 'stop'
+          assistant.plan = [...skipped.map((name) => `${name} 当前繁忙`), modelCaption(model, true)]
+          bump()
+          try {
+            assistant.text = await requestChat({
+              modelId: model.id,
+              messages: history,
+              apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
+              baseUrl: baseUrl(model.platformId),
+              signal: requests.signal,
+            })
+            settled = true
+            return 'done'
+          } catch (error) {
+            if (my !== runToken || requests.signal.aborted) return 'stop'
+            lastError = error instanceof Error ? error.message : '这次没有回复。'
+            if (/没有可用模型/.test(lastError)) return 'skip'
+            if (!switchableFailure(error)) {
+              assistant.text = lastError
+              settled = true
+              return 'stop'
+            }
+            skipped.push(model.name)
+            assistant.plan = [...skipped.map((name) => `${name} 当前繁忙`), '正在更换模型']
+            assistant.text = ''
+            bump()
+            return 'busy'
+          }
+        })
+        if (my !== runToken) return
+        if (!settled) {
+          assistant.plan = skipped.map((name) => `${name} 当前繁忙`)
+          assistant.text = lastError || unavailableText('chat')
         }
         return
       }

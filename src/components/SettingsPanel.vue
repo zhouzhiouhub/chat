@@ -59,7 +59,7 @@ function clear(platformId: string) {
                 class="underline decoration-stone-300 underline-offset-4 hover:decoration-ink"
                 target="_blank"
                 rel="noopener noreferrer"
-              >{{ platform.name }}</a>
+              >{{ platform.siteName || platform.name }}</a>
               <template v-else>{{ platform.name }}</template>
             </h3>
             <p class="mt-1 text-xs text-stone-500">{{ platform.hint }}</p>

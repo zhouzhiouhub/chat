@@ -30,6 +30,7 @@ export interface PlatformOption {
   defaultBaseUrl: string
   keyLabel: string
   site?: string
+  siteName?: string
   customModels?: boolean
 }
 
@@ -40,7 +41,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     keyLabel: 'API Key',
-    site: 'https://ai.google.dev/',
+    site: 'https://aistudio.google.com/',
+    siteName: 'Google AI Studio',
   },
   {
     id: 'openai',
@@ -48,7 +50,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.openai.com/v1',
     keyLabel: 'API Key',
-    site: 'https://openai.com/',
+    site: 'https://platform.openai.com/',
+    siteName: 'OpenAI Platform',
   },
   {
     id: 'claude',
@@ -56,7 +59,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
     keyLabel: 'API Key',
-    site: 'https://www.anthropic.com/',
+    site: 'https://platform.claude.com/',
+    siteName: 'Claude Platform',
   },
   {
     id: 'perplexity',
@@ -64,7 +68,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.perplexity.ai',
     keyLabel: 'API Key',
-    site: 'https://www.perplexity.ai/',
+    site: 'https://docs.perplexity.ai/',
+    siteName: 'Perplexity API',
   },
   {
     id: 'deepseek',
@@ -72,7 +77,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.deepseek.com',
     keyLabel: 'API Key',
-    site: 'https://www.deepseek.com/',
+    site: 'https://platform.deepseek.com/',
+    siteName: 'DeepSeek Platform',
   },
   {
     id: 'kimi',
@@ -80,7 +86,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
     keyLabel: 'API Key',
-    site: 'https://www.kimi.com/',
+    site: 'https://platform.kimi.com/',
+    siteName: 'Kimi 开放平台',
   },
   {
     id: 'volcengine',
@@ -88,7 +95,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     keyLabel: 'API Key',
-    site: 'https://www.doubao.com/',
+    site: 'https://www.volcengine.com/product/ark',
+    siteName: '火山方舟',
   },
   {
     id: 'ernie',
@@ -96,7 +104,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://qianfan.baidubce.com/v2',
     keyLabel: 'API Key',
-    site: 'https://yiyan.baidu.com/',
+    site: 'https://cloud.baidu.com/product/qianfan',
+    siteName: '千帆',
   },
   {
     id: 'zhipu',
@@ -104,7 +113,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     keyLabel: 'API Key',
-    site: 'https://chatglm.cn/',
+    site: 'https://open.bigmodel.cn/',
+    siteName: '智谱开放平台',
   },
   {
     id: 'qwen',
@@ -112,7 +122,8 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     keyLabel: 'API Key',
-    site: 'https://tongyi.aliyun.com/',
+    site: 'https://www.aliyun.com/product/bailian',
+    siteName: '阿里云百炼',
   },
   {
     id: 'compatible',

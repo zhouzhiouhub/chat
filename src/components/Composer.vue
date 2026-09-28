@@ -206,10 +206,10 @@ function onResolution(event: Event) {
           class="max-w-56 truncate rounded-full border border-line bg-white px-2 py-1 text-xs"
           aria-label="模型"
         >
-          <option value="auto">自动</option>
+          <option value="auto">auto</option>
           <optgroup v-for="group in modelGroups" :key="group.id" :label="group.name">
             <option v-for="model in group.models" :key="model.id" :value="model.id">
-              {{ model.name }} · {{ model.kind === 'chat' ? '对话' : '图片' }}
+              {{ model.name }}
             </option>
           </optgroup>
         </select>

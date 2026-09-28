@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import logoUrl from '../assets/kinolin-logo.svg'
+import symbolUrl from '../assets/kinolin-symbol.svg'
 import ConfirmCard from './ConfirmCard.vue'
 import ImageTile from './ImageTile.vue'
 import { ratioValue, resolveRatio, SUGGESTIONS } from '../lib/catalog'
@@ -112,7 +113,7 @@ async function submitEdit(message: Message) {
         </div>
 
         <div v-else class="flex gap-3">
-          <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink font-serif text-sm text-white">绘</div>
+          <img :src="symbolUrl" alt="" class="mt-0.5 h-8 w-8 shrink-0" />
           <div class="min-w-0 flex-1">
             <p v-if="message.text" class="text-sm leading-6 whitespace-pre-wrap">{{ message.text }}</p>
             <span v-else class="inline-flex gap-1 py-2" aria-label="正在整理">

@@ -34,6 +34,7 @@ function platformEndpoint(platformId: string, baseUrl: string, path: string): st
   if (platformId === 'compatible') return `/proxy/upstream${path}`
   const normalized = baseUrl.replace(/\/$/, '')
   const official = platformOf(platformId).defaultBaseUrl.replace(/\/$/, '')
+  if (platformId === 'google') return `${normalized || official}${path}`
   if (normalized && normalized === official) return `/proxy/${platformId}${path}`
   return `${normalized}${path}`
 }
@@ -58,6 +59,8 @@ async function statusOf(platformId: string, apiKey: string, baseUrl: string, pat
       headers: authHeaders(platformId, apiKey, baseUrl),
       signal,
     })
+    const type = (response.headers.get('content-type') ?? '').toLowerCase()
+    if (response.status === 200 && type.includes('text/html')) return null
     return response.status
   } catch {
     return null

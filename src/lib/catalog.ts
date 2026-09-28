@@ -9,11 +9,14 @@ import type {
   ToolId,
 } from '../types'
 
+export type ModelKind = 'chat' | 'image'
+
 export interface ModelOption {
   id: string
   name: string
   platformId: string
   apiModel: string
+  kind: ModelKind
   resolutions: Resolution[]
   qualities: Quality[] | null
   credit: number
@@ -31,90 +34,92 @@ export const PLATFORMS: PlatformOption[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    hint: '图片生成与编辑',
+    hint: '对话与图片',
     defaultBaseUrl: 'https://api.openai.com/v1',
     keyLabel: 'API Key',
   },
   {
     id: 'volcengine',
     name: '火山方舟',
-    hint: 'Seedream 图片生成',
+    hint: '对话与图片',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     keyLabel: 'API Key',
   },
   {
     id: 'google',
     name: 'Google Gemini',
-    hint: 'Nano Banana 图片生成',
+    hint: '对话与图片',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
     keyLabel: 'API Key',
   },
 ]
 
+const IMAGE_RES: Resolution[] = ['1K', '2K', '4K']
+
+function chatModel(id: string, name: string, platformId: string, apiModel = id): ModelOption {
+  return { id, name, platformId, apiModel, kind: 'chat', resolutions: [], qualities: null, credit: 0 }
+}
+
+function imageModel(
+  id: string,
+  name: string,
+  platformId: string,
+  apiModel: string,
+  credit: number,
+  resolutions: Resolution[] = IMAGE_RES,
+  qualities: Quality[] | null = null,
+): ModelOption {
+  return { id, name, platformId, apiModel, kind: 'image', resolutions, qualities, credit }
+}
+
 export const MODELS: ModelOption[] = [
-  {
-    id: 'seedream',
-    name: 'Seedream 5.0 Pro',
-    platformId: 'volcengine',
-    apiModel: 'doubao-seedream-5-0-pro-260628',
-    resolutions: ['1K', '2K'],
-    qualities: null,
-    credit: 8,
-  },
-  {
-    id: 'seedream-lite',
-    name: 'Seedream 5.0 Lite',
-    platformId: 'volcengine',
-    apiModel: 'doubao-seedream-5-0-260128',
-    resolutions: ['2K', '4K'],
-    qualities: null,
-    credit: 6,
-  },
-  {
-    id: 'banana',
-    name: 'Nano Banana Pro',
-    platformId: 'google',
-    apiModel: 'gemini-3-pro-image',
-    resolutions: ['1K', '2K', '4K'],
-    qualities: null,
-    credit: 12,
-  },
-  {
-    id: 'banana-2',
-    name: 'Nano Banana 2',
-    platformId: 'google',
-    apiModel: 'gemini-3.1-flash-image',
-    resolutions: ['1K', '2K', '4K'],
-    qualities: null,
-    credit: 8,
-  },
-  {
-    id: 'gpt-image-2',
-    name: 'GPT Image 2',
-    platformId: 'openai',
-    apiModel: 'gpt-image-2',
-    resolutions: ['1K', '2K', '4K'],
-    qualities: null,
-    credit: 14,
-  },
-  {
-    id: 'flare',
-    name: 'GPT Image 2.5 Flare',
-    platformId: 'openai',
-    apiModel: 'gpt-image-2.5-flare',
-    resolutions: ['1K', '2K', '4K'],
-    qualities: ['低', '中', '高', '超高', '极致'],
-    credit: 16,
-  },
-  {
-    id: 'sunburst',
-    name: 'GPT Image 2.5 Sunburst',
-    platformId: 'openai',
-    apiModel: 'gpt-image-2.5-sunburst',
-    resolutions: ['1K', '2K', '4K'],
-    qualities: ['低', '中', '高', '超高', '极致'],
-    credit: 22,
-  },
+  chatModel('gpt-6-astra', 'GPT-6 Astra', 'openai'),
+  chatModel('gpt-5.6-sol', 'GPT-5.6 Sol', 'openai'),
+  chatModel('gpt-5.6-terra', 'GPT-5.6 Terra', 'openai'),
+  chatModel('gpt-5.6-luna', 'GPT-5.6 Luna', 'openai'),
+  chatModel('gpt-5.4', 'GPT-5.4', 'openai'),
+  chatModel('gpt-5.4-mini', 'GPT-5.4 mini', 'openai'),
+  chatModel('gpt-5.4-nano', 'GPT-5.4 nano', 'openai'),
+  chatModel('gpt-5.2', 'GPT-5.2', 'openai'),
+  chatModel('gpt-5.1', 'GPT-5.1', 'openai'),
+  chatModel('gpt-5', 'GPT-5', 'openai'),
+  chatModel('gpt-5-mini', 'GPT-5 mini', 'openai'),
+  chatModel('gpt-4.1', 'GPT-4.1', 'openai'),
+  chatModel('gpt-4.1-mini', 'GPT-4.1 mini', 'openai'),
+  chatModel('gpt-4o', 'GPT-4o', 'openai'),
+  chatModel('gpt-4o-mini', 'GPT-4o mini', 'openai'),
+  imageModel('sunburst', 'GPT Image 2.5 Sunburst', 'openai', 'gpt-image-2.5-sunburst', 22, IMAGE_RES, ['低', '中', '高', '超高', '极致']),
+  imageModel('flare', 'GPT Image 2.5 Flare', 'openai', 'gpt-image-2.5-flare', 16, IMAGE_RES, ['低', '中', '高', '超高', '极致']),
+  imageModel('gpt-image-2', 'GPT Image 2', 'openai', 'gpt-image-2', 14),
+  imageModel('gpt-image-1.5', 'GPT Image 1.5', 'openai', 'gpt-image-1.5', 12),
+  imageModel('gpt-image-1', 'GPT Image 1', 'openai', 'gpt-image-1', 10),
+  imageModel('gpt-image-1-mini', 'GPT Image 1 mini', 'openai', 'gpt-image-1-mini', 6),
+
+  chatModel('gemini-3.8-flash', 'Gemini 3.8 Flash', 'google'),
+  chatModel('gemini-3.7-flash', 'Gemini 3.7 Flash', 'google'),
+  chatModel('gemini-3.6-flash', 'Gemini 3.6 Flash', 'google'),
+  chatModel('gemini-3.5-flash', 'Gemini 3.5 Flash', 'google'),
+  chatModel('gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite', 'google'),
+  chatModel('gemini-3.1-flash-lite', 'Gemini 3.1 Flash-Lite', 'google'),
+  chatModel('gemini-3.1-pro', 'Gemini 3.1 Pro', 'google', 'gemini-3.1-pro-preview'),
+  chatModel('gemini-3-flash', 'Gemini 3 Flash', 'google', 'gemini-3-flash-preview'),
+  chatModel('gemini-2.5-pro', 'Gemini 2.5 Pro', 'google'),
+  chatModel('gemini-2.5-flash', 'Gemini 2.5 Flash', 'google'),
+  chatModel('gemini-2.5-flash-lite', 'Gemini 2.5 Flash-Lite', 'google'),
+  imageModel('banana', 'Nano Banana Pro', 'google', 'gemini-3-pro-image', 12),
+  imageModel('banana-2', 'Nano Banana 2', 'google', 'gemini-3.1-flash-image', 8),
+  imageModel('banana-2-lite', 'Nano Banana 2 Lite', 'google', 'gemini-3.1-flash-lite-image', 5),
+  imageModel('banana-legacy', 'Nano Banana', 'google', 'gemini-2.5-flash-image', 6),
+
+  chatModel('seed-evolving', 'Doubao Seed Evolving', 'volcengine', 'doubao-seed-evolving'),
+  chatModel('seed-2.1-pro', 'Doubao Seed 2.1 Pro', 'volcengine', 'doubao-seed-2-1-pro-260628'),
+  chatModel('seed-2.1-turbo', 'Doubao Seed 2.1 Turbo', 'volcengine', 'doubao-seed-2-1-turbo-260628'),
+  chatModel('seed-2.0-pro', 'Doubao Seed 2.0 Pro', 'volcengine', 'doubao-seed-2-0-pro-260215'),
+  chatModel('seed-2.0-lite', 'Doubao Seed 2.0 Lite', 'volcengine', 'doubao-seed-2-0-lite-260215'),
+  chatModel('seed-2.0-mini', 'Doubao Seed 2.0 mini', 'volcengine', 'doubao-seed-2-0-mini-260215'),
+  chatModel('glm-5.2', 'GLM-5.2', 'volcengine', 'glm-5-2-260617'),
+  imageModel('seedream', 'Seedream 5.0 Pro', 'volcengine', 'doubao-seedream-5-0-pro-260628', 8, ['1K', '2K']),
+  imageModel('seedream-lite', 'Seedream 5.0 Lite', 'volcengine', 'doubao-seedream-5-0-260128', 6, ['2K', '4K']),
 ]
 
 const MODEL_PREFERENCE: Record<ToolId, string[]> = {
@@ -133,17 +138,45 @@ const MODEL_PREFERENCE: Record<ToolId, string[]> = {
   split: [],
 }
 
-export function usesApi(tool: ToolId): boolean {
-  return MODEL_PREFERENCE[tool].length > 0
+const CHAT_PREFERENCE = [
+  'gpt-6-astra',
+  'gemini-3.8-flash',
+  'seed-2.1-pro',
+  'gpt-5.6-terra',
+  'gemini-3.7-flash',
+  'seed-evolving',
+  'gpt-5.6-sol',
+  'gemini-3.1-pro',
+  'seed-2.1-turbo',
+  'gpt-5.4',
+  'gemini-2.5-flash',
+  'gpt-4.1',
+]
+
+export function chooseChatModel(connectedPlatformIds: string[]): ModelOption | null {
+  const connected = new Set(connectedPlatformIds)
+  for (const id of CHAT_PREFERENCE) {
+    const model = MODELS.find((item) => item.id === id && item.kind === 'chat')
+    if (model && connected.has(model.platformId)) return model
+  }
+  return null
+}
+
+export function isImagePrompt(prompt: string): boolean {
+  return /画|绘一张|绘制|生成图|图片|海报|主视觉|插画|照片|九宫格|封面|壁纸|logo|Logo|静物|效果图|制作一张|来一张|出一张|一张/.test(prompt)
 }
 
 export function chooseModel(tool: ToolId, connectedPlatformIds: string[]): ModelOption | null {
   const connected = new Set(connectedPlatformIds)
   for (const id of MODEL_PREFERENCE[tool]) {
-    const model = MODELS.find((item) => item.id === id)
+    const model = MODELS.find((item) => item.id === id && item.kind === 'image')
     if (model && connected.has(model.platformId)) return model
   }
   return null
+}
+
+export function usesApi(tool: ToolId): boolean {
+  return MODEL_PREFERENCE[tool].length > 0
 }
 
 export function platformOf(platformId: string): PlatformOption {
@@ -336,7 +369,7 @@ const QUAL_MULT: Record<Quality, number> = { 低: 0.6, 中: 1, 高: 1.4, 超高:
 const DETAIL_MULT: Record<Detail, number> = { 低: 0.8, 中: 1, 高: 1.5 }
 
 export function getModel(id: string): ModelOption {
-  return MODELS.find((item) => item.id === id) ?? MODELS[0]
+  return MODELS.find((item) => item.id === id) ?? MODELS.find((item) => item.kind === 'image') ?? MODELS[0]
 }
 
 export function roleLabel(role: ReferenceRole): string {
@@ -353,6 +386,7 @@ export function estimateCredits(input: {
 }): number {
   if (!TOOL_META[input.tool].generative) return 0
   const model = getModel(input.modelId)
+  if (model.kind !== 'image' || model.credit <= 0) return 0
   let value = model.credit * RES_MULT[input.resolution] * Math.max(1, input.count)
   if (model.qualities) value *= QUAL_MULT[input.quality]
   if (input.tool === 'outpaint') value *= DETAIL_MULT[input.detail]
@@ -362,7 +396,7 @@ export function estimateCredits(input: {
 
 export function normalizeResolution(modelId: string, resolution: Resolution): Resolution {
   const model = getModel(modelId)
-  if (model.resolutions.includes(resolution)) return resolution
+  if (!model.resolutions.length || model.resolutions.includes(resolution)) return resolution
   return model.resolutions[model.resolutions.length - 1]
 }
 

@@ -5,11 +5,13 @@ import {
   estimateCredits,
   FRAME_RATIOS,
   getModel,
+  MODELS,
   platformOf,
   RATIOS,
   roleLabel,
   TOOL_META,
 } from '../lib/catalog'
+import { useChat } from '../lib/store'
 import type { ConfirmSpec, Detail, EnhanceMode, Quality, Resolution } from '../types'
 
 const props = defineProps<{ spec: ConfirmSpec }>()
@@ -19,7 +21,13 @@ const emit = defineEmits<{
   patch: [patch: Partial<ConfirmSpec>]
 }>()
 
+const store = useChat()
 const model = computed(() => getModel(props.spec.modelId))
+const imageChoices = computed(() => {
+  const connected = MODELS.filter((item) => item.kind === 'image' && store.connectedIds.includes(item.platformId))
+  if (connected.some((item) => item.id === props.spec.modelId)) return connected
+  return [model.value, ...connected]
+})
 const locked = computed(() => props.spec.status !== 'pending')
 const credits = computed(() =>
   estimateCredits({
@@ -69,10 +77,17 @@ function onEnhance(event: Event) {
     <p v-else-if="spec.status === 'cancelled'" class="px-4 py-3 text-sm text-stone-500">这次没有调用模型。</p>
 
     <div v-else class="divide-y divide-line text-sm">
-      <div v-if="TOOL_META[spec.tool].generative" class="flex items-center justify-between gap-3 px-4 py-2.5">
+      <label v-if="TOOL_META[spec.tool].generative" class="flex items-center justify-between gap-3 px-4 py-2.5">
         <span class="text-stone-500">模型</span>
-        <span class="text-right">{{ model.name }} · {{ platformOf(model.platformId).name }}</span>
-      </div>
+        <select
+          class="max-w-[14rem] rounded-lg border border-line bg-white px-2 py-1"
+          :disabled="locked"
+          :value="spec.modelId"
+          @change="emit('patch', { modelId: valueOf($event) })"
+        >
+          <option v-for="item in imageChoices" :key="item.id" :value="item.id">{{ item.name }} · {{ platformOf(item.platformId).name }}</option>
+        </select>
+      </label>
       <label v-if="showRatio" class="flex items-center justify-between gap-3 px-4 py-2.5">
         <span class="text-stone-500">比例</span>
         <select

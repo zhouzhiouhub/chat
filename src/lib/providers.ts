@@ -200,3 +200,71 @@ export async function requestProviderImages(input: ImageRequest): Promise<string
   }
   return urls
 }
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+function readChatText(payload: unknown): string {
+  const data = payload as {
+    output_text?: string
+    output?: { content?: { text?: string }[] }[]
+    choices?: { message?: { content?: string | { text?: string }[] } }[]
+    candidates?: { content?: { parts?: { text?: string }[] } }[]
+  }
+  if (data.output_text?.trim()) return data.output_text.trim()
+  const responseParts = (data.output ?? []).flatMap((item) => item.content ?? []).map((part) => part.text ?? '')
+  if (responseParts.join('').trim()) return responseParts.join('').trim()
+  const choice = data.choices?.[0]?.message?.content
+  if (typeof choice === 'string' && choice.trim()) return choice.trim()
+  if (Array.isArray(choice)) {
+    const text = choice.map((part) => part.text ?? '').join('').trim()
+    if (text) return text
+  }
+  const gemini = (data.candidates?.[0]?.content?.parts ?? []).map((part) => part.text ?? '').join('').trim()
+  if (gemini) return gemini
+  throw new Error('模型没有返回文字。')
+}
+
+export async function requestChat(input: {
+  modelId: string
+  messages: ChatTurn[]
+  apiKey: string
+  baseUrl: string
+  signal?: AbortSignal
+}): Promise<string> {
+  const model = getModel(input.modelId)
+  if (!input.apiKey.trim()) throw new Error(`请先在设置里接入${platformOf(model.platformId).name}。`)
+  if (model.platformId === 'google') {
+    const payload = await postJson(
+      endpoint(model, input.baseUrl, `/models/${model.apiModel}:generateContent`),
+      input.apiKey,
+      {
+        contents: input.messages.map((message) => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: message.content }],
+        })),
+      },
+      input.signal,
+      'google',
+    )
+    return readChatText(payload)
+  }
+  if (model.platformId === 'openai') {
+    const payload = await postJson(
+      endpoint(model, input.baseUrl, '/responses'),
+      input.apiKey,
+      { model: model.apiModel, input: input.messages },
+      input.signal,
+    )
+    return readChatText(payload)
+  }
+  const payload = await postJson(
+    endpoint(model, input.baseUrl, '/chat/completions'),
+    input.apiKey,
+    { model: model.apiModel, messages: input.messages },
+    input.signal,
+  )
+  return readChatText(payload)
+}

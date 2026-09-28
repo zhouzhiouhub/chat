@@ -24,7 +24,7 @@ const groups = computed(() => {
 </script>
 
 <template>
-  <div>
+  <div class="h-full shrink-0">
     <button
       v-if="store.sidebarOpen"
       class="fixed inset-0 z-30 bg-[#1c1917]/30 md:hidden"
@@ -32,7 +32,7 @@ const groups = computed(() => {
       @click="store.sidebarOpen = false"
     />
     <aside
-      class="fixed inset-y-0 left-0 z-40 flex w-[272px] flex-col border-r border-line bg-sand transition-transform md:static md:translate-x-0"
+      class="fixed inset-y-0 left-0 z-40 flex h-dvh w-[272px] flex-col border-r border-line bg-sand transition-transform md:static md:h-full md:translate-x-0"
       :class="store.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
       <div class="flex items-center justify-between px-4 pb-2 pt-4">
@@ -78,7 +78,7 @@ const groups = computed(() => {
           </div>
         </section>
       </div>
-      <div class="mt-auto border-t border-line p-3">
+      <div class="shrink-0 border-t border-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <button
           class="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm"
           :class="store.settingsOpen ? 'bg-white shadow-sm' : 'hover:bg-white/70'"

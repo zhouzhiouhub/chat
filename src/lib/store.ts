@@ -1,12 +1,14 @@
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, type InjectionKey } from 'vue'
 import {
   angleFromPrompt,
+  chooseChatModel,
   chooseModel,
   countFromPrompt,
   enhanceFromPrompt,
   getModel,
   hasExplicitTarget,
   inferTool,
+  isImagePrompt,
   lightFromPrompt,
   normalizeResolution,
   platformOf,
@@ -21,7 +23,7 @@ import {
   type ModelOption,
   type Suggestion,
 } from './catalog'
-import { requestProviderImages, type ImageJob, type ImageRequest } from './providers'
+import { requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
 import { composeImage, cropToRatio, cutoutImage, downscaleFile, resizeImage, sliceGrid } from './render'
 import type {
   AspectRatio,
@@ -174,6 +176,7 @@ function load(): {
       resolution?: Resolution
       count?: number
       quality?: Quality
+      picker?: string
     }
     if (!Array.isArray(data.chats)) return null
     return {
@@ -191,7 +194,7 @@ function load(): {
       })),
       activeId: data.activeId ?? '',
       mode: data.mode === 'auto' ? 'auto' : 'confirm',
-      modelId: data.modelId ?? 'seedream',
+      modelId: data.picker ?? 'auto',
       ratio: data.ratio ?? '1:1',
       resolution: data.resolution ?? '2K',
       count: data.count ?? 1,
@@ -359,9 +362,9 @@ export function createChatStore(): ChatStore {
   if (saved && chats.value.some((chat) => chat.id === saved.activeId)) initialId = saved.activeId
   const activeId = ref(initialId)
   const mode = ref<Mode>(saved?.mode ?? 'confirm')
-  const modelId = ref(saved?.modelId ?? 'seedream')
+  const modelId = ref(saved?.modelId ?? 'auto')
   const ratio = ref<AspectRatio>(saved?.ratio ?? '1:1')
-  const resolution = ref<Resolution>(normalizeResolution(modelId.value, saved?.resolution ?? '2K'))
+  const resolution = ref<Resolution>(normalizeResolution(saved?.modelId && saved.modelId !== 'auto' ? saved.modelId : 'seedream', saved?.resolution ?? '2K'))
   const count = ref(saved?.count && saved.count >= 1 && saved.count <= 4 ? saved.count : 1)
   const quality = ref<Quality>(saved?.quality ?? '高')
   const draft = ref('')
@@ -406,6 +409,7 @@ export function createChatStore(): ChatStore {
         resolution: resolution.value,
         count: count.value,
         quality: quality.value,
+        picker: modelId.value,
       }
       let json = JSON.stringify(payload)
       if (json.length > 4_200_000) {
@@ -432,12 +436,11 @@ export function createChatStore(): ChatStore {
     return chooseModel(tool, connectedIds.value)
   }
 
-  function assignModel(tool: ToolId): ModelOption | null {
-    const chosen = modelFor(tool)
-    if (!chosen) return null
-    modelId.value = chosen.id
-    resolution.value = normalizeResolution(chosen.id, resolution.value)
-    return chosen
+  function pickedModel(): ModelOption | null {
+    if (modelId.value === 'auto') return null
+    const model = getModel(modelId.value)
+    if (model.id !== modelId.value || !connectedIds.value.includes(model.platformId)) return null
+    return model
   }
 
   function specToRequest(spec: ConfirmSpec): ImageJob {
@@ -578,7 +581,6 @@ export function createChatStore(): ChatStore {
         draft.value = ''
         attachments.value = []
         pendingTool.value = null
-        if (usesApi(toolChip)) assignModel(toolChip)
         openEditorFrom(toolChip, source, text, chat)
         return
       }
@@ -589,7 +591,6 @@ export function createChatStore(): ChatStore {
     if (promptedRatio) ratio.value = promptedRatio
     const promptedCount = countFromPrompt(finalText)
     if (promptedCount) count.value = promptedCount
-    resolution.value = normalizeResolution(modelId.value, resolution.value)
 
     draft.value = ''
     attachments.value = []
@@ -617,11 +618,44 @@ export function createChatStore(): ChatStore {
         assistant.text = `要标注「${source.label}」，请点开图片使用标注工具圈出区域，并写明这块是要修改还是保留。`
         return
       }
-      if (usesApi(tool) && !assignModel(tool)) {
-        assistant.text = '还没有可用的图片模型。请点左下角「设置」，接入平台 API。保存后，生成时会自动选用该平台的内置模型。'
+      const selected = pickedModel()
+      const plainChat = tool === 'generate' && (selected ? selected.kind === 'chat' : !isImagePrompt(finalText))
+      if (plainChat) {
+        const model = selected?.kind === 'chat' ? selected : chooseChatModel(connectedIds.value)
+        if (!model) {
+          assistant.text = '还没有可用的对话模型。请点左下角「设置」接入平台，或在输入框里改选一个模型。'
+          return
+        }
+        assistant.plan = [`${model.name}（${platformOf(model.platformId).name}${selected ? '' : '，自动选择'}）`]
+        try {
+          const history = chat.messages
+            .filter((item) => item.id !== assistant.id && item.text.trim())
+            .slice(-16)
+            .map((item) => ({ role: item.role, content: item.text }))
+          assistant.text = await requestChat({
+            modelId: model.id,
+            messages: history,
+            apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
+            baseUrl: baseUrl(model.platformId),
+            signal: requests.signal,
+          })
+        } catch (error) {
+          if (my !== runToken) return
+          assistant.text = error instanceof Error ? error.message : '这次没有回复。'
+        }
         return
       }
-      const chosen = getModel(modelId.value)
+      if (usesApi(tool) && selected?.kind === 'chat') {
+        assistant.text = '当前选的是对话模型，这个操作需要图片模型。请改成自动，或另选一个图片模型。'
+        return
+      }
+      const chosen = selected?.kind === 'image' ? selected : chooseModel(tool, connectedIds.value)
+      if (usesApi(tool) && !chosen) {
+        assistant.text = '还没有可用的图片模型。请点左下角「设置」接入平台，或在输入框里改选一个模型。'
+        return
+      }
+      const imageModel = chosen ?? getModel('seedream')
+      resolution.value = normalizeResolution(imageModel.id, resolution.value)
       assistant.text =
         mode.value === 'auto'
           ? '我按当前规格直接生成。新结果留在这条对话里，原来的图片不会被覆盖。'
@@ -633,7 +667,7 @@ export function createChatStore(): ChatStore {
         assistant,
         buildPlan({
           tool,
-          modelName: usesApi(tool) ? `${chosen.name}（${platformOf(chosen.platformId).name}，自动选择）` : getModel(modelId.value).name,
+          modelName: `${imageModel.name}（${platformOf(imageModel.platformId).name}，${selected ? '手动选择' : '自动选择'}）`,
           ratioLabel,
           resolution: resolution.value,
           count: tool === 'grid' ? 1 : count.value,
@@ -648,7 +682,7 @@ export function createChatStore(): ChatStore {
         status: mode.value === 'auto' ? 'generating' : 'pending',
         tool,
         prompt: finalText,
-        modelId: modelId.value,
+        modelId: imageModel.id,
         ratio: ratio.value,
         resolution: resolution.value,
         count: tool === 'grid' || tool === 'split' || tool === 'crop' || tool === 'resize' || tool === 'cutout' ? 1 : count.value,
@@ -713,6 +747,7 @@ export function createChatStore(): ChatStore {
     const message = findMessage(messageId)
     if (!message?.confirm || message.confirm.status !== 'pending') return
     Object.assign(message.confirm, patch)
+    if (patch.modelId) modelId.value = patch.modelId
     message.confirm.resolution = normalizeResolution(message.confirm.modelId, message.confirm.resolution)
     message.confirm.count = Math.min(4, Math.max(1, message.confirm.count))
     bump()
@@ -888,7 +923,6 @@ export function createChatStore(): ChatStore {
       pendingTool.value = tool
     },
     openEditor(image: ImageAsset, tool: ToolId) {
-      if (usesApi(tool)) assignModel(tool)
       editor.value = {
         tool,
         prompt: '',

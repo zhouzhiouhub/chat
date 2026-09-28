@@ -5,6 +5,7 @@ import {
   estimateCredits,
   FRAME_RATIOS,
   getModel,
+  MODELS,
   ratioValue,
   TOOL_META,
   usesApi,
@@ -73,7 +74,7 @@ let drag: null | {
 
 const editor = computed(() => store.editor)
 const tool = computed(() => editor.value?.tool ?? 'redraw')
-const autoModel = computed(() => (usesApi(tool.value) ? store.modelFor(tool.value) : null))
+const imageChoices = computed(() => MODELS.filter((item) => item.kind === 'image' && store.connectedIds.includes(item.platformId)))
 const model = computed(() => getModel(modelId.value))
 const needsPaint = computed(() => tool.value === 'redraw' || tool.value === 'erase' || tool.value === 'annotate')
 const generative = computed(() => TOOL_META[tool.value].generative)
@@ -114,6 +115,7 @@ const angleStyle = computed(() => ({
 }))
 
 watch(modelId, () => {
+  if (!model.value.resolutions.length) return
   resolution.value = model.value.resolutions.includes(resolution.value)
     ? resolution.value
     : model.value.resolutions[model.value.resolutions.length - 1]
@@ -124,8 +126,9 @@ watch(
   async (value) => {
     if (!value) return
     prompt.value = value.prompt
-    const chosen = store.modelFor(value.tool)
-    modelId.value = chosen?.id ?? store.modelId
+    const preferred = MODELS.find((item) => item.id === store.modelId && item.kind === 'image' && store.connectedIds.includes(item.platformId))
+    const chosen = preferred ?? store.modelFor(value.tool)
+    modelId.value = chosen?.id ?? 'seedream'
     resolution.value = model.value.resolutions.includes(store.resolution)
       ? store.resolution
       : model.value.resolutions[model.value.resolutions.length - 1]
@@ -329,8 +332,8 @@ async function apply() {
     else if (current.tool === 'split') urls.push(...(await sliceGrid(current.sourceUrl, split.value)))
     else if (current.tool === 'cutout') urls.push(await cutoutImage(current.sourceUrl))
     else if (usesApi(current.tool)) {
-      const chosen = store.modelFor(current.tool)
-      if (!chosen) throw new Error('请先在左下角设置里接入平台 API。')
+      const chosen = imageChoices.value.find((item) => item.id === modelId.value)
+      if (!chosen) throw new Error('请先在左下角设置里接入带图片模型的平台。')
       let text = prompt.value.trim() || defaultPrompt(current.tool)
       if (current.tool === 'relight') text += `\n主光方向 ${direction.value}，亮度 ${brightness.value}，色温 ${temperature.value}，轮廓光 ${rim.value}。`
       if (current.tool === 'angle') text += `\n水平旋转 ${yaw.value} 度，倾斜 ${pitch.value} 度，远近 ${zoom.value}，广角 ${wide.value}。`
@@ -540,12 +543,14 @@ async function apply() {
           </div>
           <p v-if="tool === 'cutout'" class="text-sm leading-6 text-stone-500">会从画面边缘开始去掉与背景接近的颜色。生成后请放大检查头发和透明边缘。</p>
           <template v-if="usesApi(tool)">
-            <div v-if="autoModel" class="flex items-center justify-between text-sm">
+            <label v-if="imageChoices.length" class="flex items-center justify-between text-sm">
               <span class="text-stone-500">模型</span>
-              <span>{{ autoModel.name }}</span>
-            </div>
-            <p v-else class="text-sm leading-6 text-stone-500">请先在左下角设置里接入平台 API。接入后会按这个工具自动选择内置模型。</p>
-            <template v-if="autoModel">
+              <select v-model="modelId" class="max-w-[11rem] rounded-lg border border-line bg-white px-2 py-1" @change="store.modelId = modelId">
+                <option v-for="item in imageChoices" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+            <p v-else class="text-sm leading-6 text-stone-500">请先在左下角设置里接入平台 API。接入后可以在这里选择图片模型。</p>
+            <template v-if="imageChoices.length">
             <label class="flex items-center justify-between text-sm">
               <span class="text-stone-500">清晰度</span>
               <select v-model="resolution" class="rounded-lg border border-line bg-white px-2 py-1">
@@ -567,7 +572,7 @@ async function apply() {
             </template>
           </template>
           <p v-if="error" class="text-sm text-ember">{{ error }}</p>
-          <button class="mt-auto rounded-full bg-ember py-2 text-sm font-medium text-white disabled:opacity-50" :disabled="working || (usesApi(tool) && !autoModel)" @click="apply">
+          <button class="mt-auto rounded-full bg-ember py-2 text-sm font-medium text-white disabled:opacity-50" :disabled="working || (usesApi(tool) && !imageChoices.length)" @click="apply">
             {{ working ? '处理中' : actionLabel }}
           </button>
         </div>

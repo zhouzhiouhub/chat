@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
-import { modelsForPlatform, PLATFORMS } from '../lib/catalog'
+import { computed, reactive, watch } from 'vue'
+import { modelsForPlatform, PLATFORMS, chooseChatModel } from '../lib/catalog'
 import { useChat } from '../lib/store'
 
 const store = useChat()
+const chatAuto = computed(() => chooseChatModel(store.connectedIds))
 const drafts = reactive<Record<string, { apiKey: string; baseUrl: string }>>({})
 const savedId = reactive<{ id: string }>({ id: '' })
 
@@ -46,11 +47,14 @@ function clear(platformId: string) {
       <button class="text-sm text-stone-500 hover:text-ink" @click="store.closeSettings()">返回对话</button>
       <h2 class="mt-3 font-serif text-3xl">API 配置</h2>
       <p class="mt-2 text-sm leading-6 text-stone-500">
-        每个平台使用内置模型，不需要填写模型名。保存密钥后，生成和改图会在已接入的模型里自动选择。密钥只保存在这台浏览器。
+        接入后，输入框里可以选择该平台的对话模型和图片模型，也可以保持自动。密钥只保存在这台浏览器。
       </p>
-      <p class="mt-3 text-sm">
-        新图当前会使用
-        <span class="font-medium">{{ store.modelFor('generate')?.name ?? '尚未接入的模型' }}</span>
+      <p class="mt-3 text-sm leading-6">
+        自动对话会使用
+        <span class="font-medium">{{ chatAuto?.name ?? '尚未接入的对话模型' }}</span>
+        ，自动画图会使用
+        <span class="font-medium">{{ store.modelFor('generate')?.name ?? '尚未接入的图片模型' }}</span>
+        。
       </p>
 
       <section v-for="platform in PLATFORMS" :key="platform.id" class="mt-5 rounded-2xl border border-line bg-white p-4">
@@ -70,7 +74,7 @@ function clear(platformId: string) {
         <ul class="mt-3 flex flex-wrap gap-2">
           <li v-for="model in modelsForPlatform(platform.id)" :key="model.id" class="rounded-xl bg-sand px-2.5 py-1.5">
             <span class="block text-xs font-medium">{{ model.name }}</span>
-            <span class="block text-[11px] text-stone-500">{{ model.apiModel }}</span>
+            <span class="block text-[11px] text-stone-500">{{ model.kind === 'chat' ? '对话' : '图片' }} · {{ model.apiModel }}</span>
           </li>
         </ul>
 

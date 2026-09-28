@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { COMMANDS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
+import { COMMANDS, MODELS, modelsForPlatform, PLATFORMS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
 import { useChat } from '../lib/store'
 import type { ImageAsset, Resolution, ToolId } from '../types'
 
@@ -28,7 +28,15 @@ const mentionItems = computed(() => {
   if (mentionQuery.value === null) return []
   return gallery.value.filter((image) => image.label.includes(mentionQuery.value!))
 })
-const autoModel = computed(() => store.modelFor('generate'))
+const modelGroups = computed(() =>
+  PLATFORMS.flatMap((platform) => {
+    if (!store.connectedIds.includes(platform.id)) return []
+    const models = modelsForPlatform(platform.id)
+    return models.length ? [{ id: platform.id, name: platform.name, models }] : []
+  }),
+)
+const pickedModel = computed(() => MODELS.find((item) => item.id === store.modelId) ?? null)
+const showImageOptions = computed(() => !pickedModel.value || pickedModel.value.kind === 'image')
 const canSend = computed(() => Boolean(store.draft.trim() || store.attachments.length || store.pendingTool))
 
 watch(
@@ -180,7 +188,7 @@ function onResolution(event: Event) {
         v-model="store.draft"
         rows="1"
         class="max-h-40 w-full bg-transparent px-4 pt-3 pb-1 text-sm leading-6 outline-none"
-        placeholder="描述主体、环境、构图、光线和风格。用 @ 引用图片，用 / 调用工具"
+        :placeholder="showImageOptions ? '描述主体、环境、构图、光线和风格。用 @ 引用图片，用 / 调用工具' : '输入问题。用 / 调用图片工具，用 @ 引用图片'"
         @keydown="onKeydown"
       />
 
@@ -189,12 +197,21 @@ function onResolution(event: Event) {
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="fileRef?.click()">图片</button>
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" @click="insert('/')">/</button>
         <button class="rounded-full px-2.5 py-1.5 text-sm hover:bg-sand" :disabled="!gallery.length" @click="insert('@')">@</button>
-        <button
-          class="max-w-44 truncate rounded-full border border-line bg-white px-2.5 py-1 text-xs"
-          @click="store.openSettings()"
+        <select
+          v-if="modelGroups.length"
+          v-model="store.modelId"
+          class="max-w-56 truncate rounded-full border border-line bg-white px-2 py-1 text-xs"
+          aria-label="模型"
         >
-          {{ autoModel ? `自动 · ${autoModel.name}` : '未接入模型' }}
-        </button>
+          <option value="auto">自动</option>
+          <optgroup v-for="group in modelGroups" :key="group.id" :label="group.name">
+            <option v-for="model in group.models" :key="model.id" :value="model.id">
+              {{ model.name }} · {{ model.kind === 'chat' ? '对话' : '图片' }}
+            </option>
+          </optgroup>
+        </select>
+        <button v-else class="rounded-full border border-line bg-white px-2.5 py-1 text-xs" @click="store.openSettings()">未接入模型</button>
+        <template v-if="showImageOptions">
         <select v-model="store.ratio" class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="比例">
           <option v-for="item in RATIOS" :key="item" :value="item">{{ item }}</option>
         </select>
@@ -206,6 +223,7 @@ function onResolution(event: Event) {
           <option value="2K">2K</option>
           <option value="4K">4K</option>
         </select>
+        </template>
         <span class="flex-1" />
         <button
           v-if="store.busy"
@@ -224,6 +242,6 @@ function onResolution(event: Event) {
         </button>
       </div>
     </div>
-    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">已接入的平台会按任务自动选模型并调用接口。密钥只留在这台浏览器。</p>
+    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">可以自己选模型。选自动时，普通对话用对话模型，画图用图片模型。</p>
   </div>
 </template>

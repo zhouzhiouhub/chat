@@ -14,6 +14,7 @@ import {
   PLATFORMS,
   setCompatibleModels,
   ratioFromPrompt,
+  resolutionFromPrompt,
   resolveRatio,
   roleLabel,
   splitFromPrompt,
@@ -598,11 +599,6 @@ export function createChatStore(): ChatStore {
     const text = (preset?.text ?? draft.value).trim()
     const toolChip = preset ? null : pendingTool.value
     const own = preset ? [] : attachments.value.map((item) => ({ ...item }))
-    if (preset) {
-      ratio.value = preset.ratio
-      count.value = preset.count
-      resolution.value = preset.resolution
-    }
     if (!text && own.length === 0 && !toolChip) return
 
     const chat = current()
@@ -623,10 +619,7 @@ export function createChatStore(): ChatStore {
     }
 
     const finalText = text || `${TOOL_META[tool].label}这张图片`
-    const promptedRatio = ratioFromPrompt(finalText)
-    if (promptedRatio) ratio.value = promptedRatio
-    const promptedCount = countFromPrompt(finalText)
-    if (promptedCount) count.value = promptedCount
+    applyPromptSpec(finalText)
 
     draft.value = ''
     attachments.value = []
@@ -662,10 +655,17 @@ export function createChatStore(): ChatStore {
     if (first?.id === user.id) chat.title = next.replace(/\s+/g, ' ').slice(0, 22) || '新对话'
     chat.updatedAt = Date.now()
     const tool = inferTool(next, refs.length > 0 || hasExplicitTarget(next))
+    applyPromptSpec(next)
     chat.messages.push(blankMessage('assistant'))
     const assistant = chat.messages[chat.messages.length - 1]
     bump()
     await runTurn(chat, assistant, next, refs, tool)
+  }
+
+  function applyPromptSpec(text: string) {
+    ratio.value = ratioFromPrompt(text) ?? '自动'
+    count.value = countFromPrompt(text) ?? 1
+    resolution.value = resolutionFromPrompt(text) ?? '2K'
   }
 
   async function runTurn(chat: Conversation, assistant: Message, finalText: string, refs: Attachment[], tool: ToolId) {

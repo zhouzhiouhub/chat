@@ -492,6 +492,13 @@ export function countFromPrompt(prompt: string): number | null {
   return Number(match[1])
 }
 
+export function resolutionFromPrompt(prompt: string): Resolution | null {
+  if (/4\s*K|超清|超高清/.test(prompt)) return '4K'
+  if (/1\s*K|标清/.test(prompt)) return '1K'
+  if (/2\s*K|高清/.test(prompt)) return '2K'
+  return null
+}
+
 export function splitFromPrompt(prompt: string): SplitSize {
   if (/2\s*[×x]\s*2/.test(prompt)) return 2
   if (/4\s*[×x]\s*4/.test(prompt)) return 4

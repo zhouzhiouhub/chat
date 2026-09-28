@@ -86,11 +86,11 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
         <div v-if="message.role === 'user'" class="flex justify-end">
           <div class="max-w-[85%]">
             <div v-if="message.attachments.length" class="mb-2 flex justify-end gap-2">
-              <span v-for="item in message.attachments" :key="item.id" class="relative">
+              <span v-for="item in message.attachments" :key="item.id" class="group relative">
                 <img :src="item.url" :alt="item.name" class="h-16 w-16 rounded-xl border border-line object-cover" />
                 <button
                   v-if="editingId === message.id"
-                  class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-xs text-white"
+                  class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-xs text-white opacity-0 group-hover:opacity-100 focus:opacity-100"
                   :aria-label="`移除${item.name}`"
                   @click="store.removeMessageAttachment(message.id, item.id)"
                 >

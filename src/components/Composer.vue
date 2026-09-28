@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { COMMANDS, getModel, modelsForPlatform, PLATFORMS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
+import { COMMANDS, getModel, modelsForPlatform, PLATFORMS, TOOL_META } from '../lib/catalog'
 import { fileFromImageUrl, imageFilesFromTransfer, imageSrcsFromTransfer } from '../lib/clipboard'
 import { useChat } from '../lib/store'
-import type { ImageAsset, Resolution, ToolId } from '../types'
+import type { ImageAsset, ToolId } from '../types'
 
 const store = useChat()
 const box = ref<HTMLTextAreaElement | null>(null)
@@ -147,9 +147,6 @@ async function onDrop(event: DragEvent) {
   await addTransferImages(files, srcs)
 }
 
-function onResolution(event: Event) {
-  store.resolution = (event.target as HTMLSelectElement).value as Resolution
-}
 </script>
 
 <template>
@@ -196,21 +193,15 @@ function onResolution(event: Event) {
           {{ TOOL_META[store.pendingTool].label }}
           <button class="text-stone-500" aria-label="移除工具" @click="store.setPendingTool(null)">×</button>
         </span>
-        <span
-          v-for="item in store.attachments"
-          :key="item.id"
-          class="inline-flex items-center gap-1.5 rounded-full border border-line py-1 pr-1.5 pl-1 text-xs"
-        >
-          <img :src="item.url" alt="" class="h-6 w-6 rounded-full object-cover" />
-          <span class="max-w-24 truncate">{{ item.name }}</span>
-          <select
-            class="rounded-md bg-transparent"
-            :value="item.role"
-            @change="store.setAttachmentRole(item.id, ($event.target as HTMLSelectElement).value as typeof item.role)"
+        <span v-for="item in store.attachments" :key="item.id" class="group relative">
+          <img :src="item.url" alt="" class="h-10 w-10 rounded-xl object-cover" />
+          <button
+            class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-white opacity-0 group-hover:opacity-100 focus:opacity-100"
+            :aria-label="`移除${item.name}`"
+            @click="store.removeAttachment(item.id)"
           >
-            <option v-for="role in ROLES" :key="role.id" :value="role.id">{{ role.label }}</option>
-          </select>
-          <button class="px-1 text-stone-500" :aria-label="`移除${item.name}`" @click="store.removeAttachment(item.id)">×</button>
+            ×
+          </button>
         </span>
       </div>
 
@@ -219,7 +210,7 @@ function onResolution(event: Event) {
         v-model="store.draft"
         rows="1"
         class="max-h-40 w-full bg-transparent px-4 pt-3 pb-1 text-sm leading-6 outline-none"
-        :placeholder="showImageOptions ? '描述主体、环境、构图、光线和风格。可粘贴图片，用 @ 引用，用 / 调用工具' : '输入问题。可粘贴图片，用 / 调用图片工具，用 @ 引用图片'"
+        :placeholder="showImageOptions ? '描述画面。可粘贴图片，@ 引用，/ 工具' : '输入问题。可粘贴图片'"
         @keydown="onKeydown"
       />
 
@@ -242,19 +233,6 @@ function onResolution(event: Event) {
           </optgroup>
         </select>
         <button v-else class="rounded-full border border-line bg-white px-2.5 py-1 text-xs" @click="store.openSettings()">未接入模型</button>
-        <template v-if="showImageOptions">
-        <select v-model="store.ratio" class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="比例">
-          <option v-for="item in RATIOS" :key="item" :value="item">{{ item }}</option>
-        </select>
-        <select v-model.number="store.count" class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="数量">
-          <option v-for="item in [1, 2, 3, 4]" :key="item" :value="item">{{ item }} 张</option>
-        </select>
-        <select class="rounded-full border border-line bg-white px-2 py-1 text-xs" aria-label="清晰度" :value="store.resolution" @change="onResolution">
-          <option value="1K">1K</option>
-          <option value="2K">2K</option>
-          <option value="4K">4K</option>
-        </select>
-        </template>
         <span class="flex-1" />
         <button
           v-if="store.busy"

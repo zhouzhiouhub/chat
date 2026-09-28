@@ -53,7 +53,16 @@ function clear(platformId: string) {
       <section v-for="platform in PLATFORMS" :key="platform.id" class="mt-5 rounded-2xl border border-line bg-white p-4">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <h3 class="text-base font-medium">{{ platform.name }}</h3>
+            <h3 class="text-base font-medium">
+              <a
+                v-if="platform.site"
+                :href="platform.site"
+                class="underline decoration-stone-300 underline-offset-4 hover:decoration-ink"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ platform.name }}</a>
+              <template v-else>{{ platform.name }}</template>
+            </h3>
             <p class="mt-1 text-xs text-stone-500">{{ platform.hint }}</p>
           </div>
           <span

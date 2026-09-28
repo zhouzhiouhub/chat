@@ -29,6 +29,7 @@ export interface PlatformOption {
   hint: string
   defaultBaseUrl: string
   keyLabel: string
+  site?: string
   customModels?: boolean
 }
 
@@ -39,6 +40,7 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     keyLabel: 'API Key',
+    site: 'https://ai.google.dev/',
   },
   {
     id: 'openai',
@@ -46,6 +48,7 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.openai.com/v1',
     keyLabel: 'API Key',
+    site: 'https://openai.com/',
   },
   {
     id: 'claude',
@@ -53,6 +56,7 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
     keyLabel: 'API Key',
+    site: 'https://www.anthropic.com/',
   },
   {
     id: 'deepseek',
@@ -60,6 +64,7 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://api.deepseek.com',
     keyLabel: 'API Key',
+    site: 'https://www.deepseek.com/',
   },
   {
     id: 'volcengine',
@@ -67,6 +72,7 @@ export const PLATFORMS: PlatformOption[] = [
     hint: ' ',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     keyLabel: 'API Key',
+    site: 'https://www.volcengine.com/product/ark',
   },
   {
     id: 'compatible',

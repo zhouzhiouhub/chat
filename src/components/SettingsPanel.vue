@@ -137,7 +137,6 @@ function removeModel(endpoint: EndpointDraft, index: number) {
         <template v-if="platform.customModels">
           <div v-for="(endpoint, index) in endpointDrafts" :key="endpoint.id" class="mt-4 rounded-xl border border-line p-3">
             <div class="flex items-center justify-between gap-3">
-              <span class="text-sm text-stone-500">接口 {{ index + 1 }}</span>
               <button class="text-xs text-stone-500 hover:text-ink" type="button" @click="removeEndpoint(index)">删除</button>
             </div>
             <label class="mt-3 block text-sm">

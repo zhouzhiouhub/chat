@@ -15,6 +15,11 @@ const store = useChat()
 const drafts = reactive<Record<string, { apiKey: string; baseUrl: string; modelText: string }>>({})
 const endpointDrafts = ref<EndpointDraft[]>([])
 const savedId = reactive<{ id: string }>({ id: '' })
+const modelsShown = reactive<Record<string, boolean>>({})
+
+function hideModels() {
+  for (const platform of PLATFORMS) modelsShown[platform.id] = false
+}
 
 function blankEndpoint(): EndpointDraft {
   return { id: uid(), name: '', apiKey: '', baseUrl: '', modelIds: [''] }
@@ -41,7 +46,9 @@ function sync() {
 watch(
   () => store.settingsOpen,
   (open) => {
-    if (open) sync()
+    if (!open) return
+    sync()
+    hideModels()
   },
   { immediate: true },
 )
@@ -204,7 +211,14 @@ function removeModel(endpoint: EndpointDraft, index: number) {
         </template>
 
         <template v-else>
-          <ul class="mt-3 flex flex-wrap gap-2">
+          <button
+            class="mt-3 text-xs text-stone-500 hover:text-ink"
+            type="button"
+            @click="modelsShown[platform.id] = !modelsShown[platform.id]"
+          >
+            {{ modelsShown[platform.id] ? '隐藏模型' : '显示模型' }}
+          </button>
+          <ul v-if="modelsShown[platform.id]" class="mt-3 flex flex-wrap gap-2">
             <li v-for="model in modelsForPlatform(platform.id)" :key="model.id" class="rounded-xl bg-sand px-2.5 py-1.5">
               <span class="block text-xs font-medium">{{ model.name }}</span>
               <span class="block text-[11px] text-stone-500">{{ model.kind === 'chat' ? '对话' : '图片' }} · {{ model.apiModel }}</span>

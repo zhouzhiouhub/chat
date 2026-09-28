@@ -8,6 +8,7 @@ import type {
   SplitSize,
   ToolId,
 } from '../types'
+import { ref } from 'vue'
 
 export type ModelKind = 'chat' | 'image'
 
@@ -28,29 +29,52 @@ export interface PlatformOption {
   hint: string
   defaultBaseUrl: string
   keyLabel: string
+  customModels?: boolean
 }
 
 export const PLATFORMS: PlatformOption[] = [
   {
+    id: 'google',
+    name: 'Gemini',
+    hint: ' ',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
+    keyLabel: 'API Key',
+  },
+  {
     id: 'openai',
     name: 'OpenAI',
-    hint: '对话与图片',
+    hint: ' ',
     defaultBaseUrl: 'https://api.openai.com/v1',
+    keyLabel: 'API Key',
+  },
+  {
+    id: 'claude',
+    name: 'Claude',
+    hint: ' ',
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    keyLabel: 'API Key',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    hint: ' ',
+    defaultBaseUrl: 'https://api.deepseek.com',
     keyLabel: 'API Key',
   },
   {
     id: 'volcengine',
     name: '火山方舟',
-    hint: '对话与图片',
+    hint: ' ',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     keyLabel: 'API Key',
   },
   {
-    id: 'google',
-    name: 'Google Gemini',
-    hint: '对话与图片',
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
+    id: 'compatible',
+    name: 'OpenAI Compatible',
+    hint: ' ',
+    defaultBaseUrl: '',
     keyLabel: 'API Key',
+    customModels: true,
   },
 ]
 
@@ -120,6 +144,15 @@ export const MODELS: ModelOption[] = [
   chatModel('glm-5.2', 'GLM-5.2', 'volcengine', 'glm-5-2-260617'),
   imageModel('seedream', 'Seedream 5.0 Pro', 'volcengine', 'doubao-seedream-5-0-pro-260628', 8, ['1K', '2K']),
   imageModel('seedream-lite', 'Seedream 5.0 Lite', 'volcengine', 'doubao-seedream-5-0-260128', 6, ['2K', '4K']),
+
+  chatModel('claude-opus-5', 'Claude Opus 5', 'claude'),
+  chatModel('claude-sonnet-5', 'Claude Sonnet 5', 'claude'),
+  chatModel('claude-opus-4-6', 'Claude Opus 4.6', 'claude'),
+  chatModel('claude-sonnet-4-6', 'Claude Sonnet 4.6', 'claude'),
+  chatModel('claude-haiku-4-5', 'Claude Haiku 4.5', 'claude'),
+
+  chatModel('deepseek-v4-pro', 'DeepSeek V4 Pro', 'deepseek'),
+  chatModel('deepseek-flash', 'DeepSeek Flash', 'deepseek'),
 ]
 
 const MODEL_PREFERENCE: Record<ToolId, string[]> = {
@@ -140,10 +173,14 @@ const MODEL_PREFERENCE: Record<ToolId, string[]> = {
 
 const CHAT_PREFERENCE = [
   'gpt-6-astra',
+  'claude-opus-5',
   'gemini-3.8-flash',
+  'deepseek-v4-pro',
   'seed-2.1-pro',
   'gpt-5.6-terra',
+  'claude-sonnet-5',
   'gemini-3.7-flash',
+  'deepseek-flash',
   'seed-evolving',
   'gpt-5.6-sol',
   'gemini-3.1-pro',
@@ -153,13 +190,36 @@ const CHAT_PREFERENCE = [
   'gpt-4.1',
 ]
 
+export const extraModels = ref<ModelOption[]>([])
+
+export function setCompatibleModels(ids: string[]) {
+  const unique = [...new Set(ids.map((item) => item.trim()).filter(Boolean))].slice(0, 40)
+  extraModels.value = unique.map((id) => chatModel(`compatible:${id}`, id, 'compatible', id))
+}
+
+function listedModels(): ModelOption[] {
+  return [...MODELS, ...extraModels.value]
+}
+
+export function modelsOfKind(kind: ModelKind, connectedPlatformIds: string[]): ModelOption[] {
+  const connected = new Set(connectedPlatformIds)
+  const models: ModelOption[] = []
+  for (const platform of PLATFORMS) {
+    if (!connected.has(platform.id)) continue
+    for (const model of modelsForPlatform(platform.id)) {
+      if (model.kind === kind) models.push(model)
+    }
+  }
+  return models
+}
+
 export function chooseChatModel(connectedPlatformIds: string[]): ModelOption | null {
   const connected = new Set(connectedPlatformIds)
   for (const id of CHAT_PREFERENCE) {
-    const model = MODELS.find((item) => item.id === id && item.kind === 'chat')
+    const model = listedModels().find((item) => item.id === id && item.kind === 'chat')
     if (model && connected.has(model.platformId)) return model
   }
-  return null
+  return listedModels().find((model) => model.kind === 'chat' && connected.has(model.platformId)) ?? null
 }
 
 export function isImagePrompt(prompt: string): boolean {
@@ -169,7 +229,7 @@ export function isImagePrompt(prompt: string): boolean {
 export function chooseModel(tool: ToolId, connectedPlatformIds: string[]): ModelOption | null {
   const connected = new Set(connectedPlatformIds)
   for (const id of MODEL_PREFERENCE[tool]) {
-    const model = MODELS.find((item) => item.id === id && item.kind === 'image')
+    const model = listedModels().find((item) => item.id === id && item.kind === 'image')
     if (model && connected.has(model.platformId)) return model
   }
   return null
@@ -184,7 +244,7 @@ export function platformOf(platformId: string): PlatformOption {
 }
 
 export function modelsForPlatform(platformId: string): ModelOption[] {
-  return MODELS.filter((item) => item.platformId === platformId)
+  return listedModels().filter((item) => item.platformId === platformId)
 }
 
 export const RATIOS: AspectRatio[] = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '自动']
@@ -308,7 +368,7 @@ export const COMMANDS: SlashCommand[] = [
   { tool: 'enhance', slash: '增强', label: '增强', hint: '清晰度增强，或放大尺寸' },
   { tool: 'angle', slash: '多角度', label: '多角度', hint: '调整旋转、倾斜、远近和广角' },
   { tool: 'crop', slash: '裁剪', label: '裁剪', hint: '拖动裁剪框或选择比例' },
-  { tool: 'annotate', slash: '标注', label: '标注', hint: '圈出重点，交给后续对话参考' },
+  { tool: 'annotate', slash: '标注', label: '标注', hint: '圈出重点，交给后续 参考' },
   { tool: 'resize', slash: '像素', label: '调整像素', hint: '输入目标宽度和高度' },
   { tool: 'split', slash: '切分', label: '快速切分', hint: '按 2×2、3×3 或 4×4 拆开' },
 ]
@@ -369,7 +429,7 @@ const QUAL_MULT: Record<Quality, number> = { 低: 0.6, 中: 1, 高: 1.4, 超高:
 const DETAIL_MULT: Record<Detail, number> = { 低: 0.8, 中: 1, 高: 1.5 }
 
 export function getModel(id: string): ModelOption {
-  return MODELS.find((item) => item.id === id) ?? MODELS.find((item) => item.kind === 'image') ?? MODELS[0]
+  return listedModels().find((item) => item.id === id) ?? listedModels().find((item) => item.kind === 'image') ?? MODELS[0]
 }
 
 export function roleLabel(role: ReferenceRole): string {

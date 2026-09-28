@@ -27,10 +27,33 @@ const QUALITY_API: Record<Quality, string> = {
 }
 
 function endpoint(model: ModelOption, baseUrl: string, path: string): string {
+  if (model.platformId === 'compatible') return `/proxy/upstream${path}`
   const normalized = baseUrl.replace(/\/$/, '')
   const official = platformOf(model.platformId).defaultBaseUrl.replace(/\/$/, '')
   if (normalized === official) return `/proxy/${model.platformId}${path}`
   return `${normalized}${path}`
+}
+
+export async function modelReturns200(model: ModelOption, apiKey: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
+  if (!apiKey.trim()) return false
+  if (model.platformId === 'compatible' && !baseUrl.trim()) return false
+  const headers: Record<string, string> = {}
+  if (model.platformId === 'google') headers['x-goog-api-key'] = apiKey
+  else if (model.platformId === 'claude') {
+    headers['x-api-key'] = apiKey
+    headers['anthropic-version'] = '2023-06-01'
+  } else headers.Authorization = `Bearer ${apiKey}`
+  if (model.platformId === 'compatible') headers['x-upstream-base'] = baseUrl.trim()
+  try {
+    const response = await fetch(endpoint(model, baseUrl, `/models/${encodeURIComponent(model.apiModel)}`), {
+      method: 'GET',
+      headers,
+      signal,
+    })
+    return response.status === 200
+  } catch {
+    return false
+  }
 }
 
 function dataUrlParts(url: string): { mime: string; data: string } | null {
@@ -92,10 +115,21 @@ async function failureMessage(response: Response): Promise<string> {
   return brief || `请求失败（${response.status}）`
 }
 
-async function postJson(url: string, apiKey: string, body: unknown, signal?: AbortSignal, header: 'bearer' | 'google' = 'bearer'): Promise<unknown> {
+async function postJson(
+  url: string,
+  apiKey: string,
+  body: unknown,
+  signal?: AbortSignal,
+  header: 'bearer' | 'google' | 'anthropic' = 'bearer',
+  upstream?: string,
+): Promise<unknown> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (header === 'google') headers['x-goog-api-key'] = apiKey
-  else headers.Authorization = `Bearer ${apiKey}`
+  else if (header === 'anthropic') {
+    headers['x-api-key'] = apiKey
+    headers['anthropic-version'] = '2023-06-01'
+  } else headers.Authorization = `Bearer ${apiKey}`
+  if (upstream) headers['x-upstream-base'] = upstream
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal })
   if (!response.ok) throw new Error(await failureMessage(response))
   return response.json()
@@ -190,13 +224,17 @@ function readB64(payload: unknown): string {
 export async function requestProviderImages(input: ImageRequest): Promise<string[]> {
   const model = getModel(input.modelId)
   if (!input.apiKey.trim()) throw new Error(`请先在设置里接入${platformOf(model.platformId).name}。`)
+  if (!(await modelReturns200(model, input.apiKey, input.baseUrl, input.signal))) {
+    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
+  }
   const total = Math.min(4, Math.max(1, input.count))
   const urls: string[] = []
   for (let index = 0; index < total; index += 1) {
     if (input.signal?.aborted) throw new Error('已停止。这次没有继续生成。')
     if (model.platformId === 'openai') urls.push(await openaiImage(input, model))
     else if (model.platformId === 'volcengine') urls.push(await volcengineImage(input, model))
-    else urls.push(await geminiImage(input, model))
+    else if (model.platformId === 'google') urls.push(await geminiImage(input, model))
+    else throw new Error(`${platformOf(model.platformId).name} 没有图片接口。`)
   }
   return urls
 }
@@ -212,6 +250,7 @@ function readChatText(payload: unknown): string {
     output?: { content?: { text?: string }[] }[]
     choices?: { message?: { content?: string | { text?: string }[] } }[]
     candidates?: { content?: { parts?: { text?: string }[] } }[]
+    content?: { text?: string }[]
   }
   if (data.output_text?.trim()) return data.output_text.trim()
   const responseParts = (data.output ?? []).flatMap((item) => item.content ?? []).map((part) => part.text ?? '')
@@ -224,6 +263,10 @@ function readChatText(payload: unknown): string {
   }
   const gemini = (data.candidates?.[0]?.content?.parts ?? []).map((part) => part.text ?? '').join('').trim()
   if (gemini) return gemini
+  if (Array.isArray(data.content)) {
+    const text = data.content.map((part) => part.text ?? '').join('').trim()
+    if (text) return text
+  }
   throw new Error('模型没有返回文字。')
 }
 
@@ -236,6 +279,11 @@ export async function requestChat(input: {
 }): Promise<string> {
   const model = getModel(input.modelId)
   if (!input.apiKey.trim()) throw new Error(`请先在设置里接入${platformOf(model.platformId).name}。`)
+  if (!(await modelReturns200(model, input.apiKey, input.baseUrl, input.signal))) {
+    throw new Error(`${model.name} 没有返回 200，这次没有继续请求。`)
+  }
+  const upstream = model.platformId === 'compatible' ? input.baseUrl.trim() : undefined
+  if (model.platformId === 'compatible' && !upstream) throw new Error('请在设置里填写 OpenAI 兼容接口的地址。')
   if (model.platformId === 'google') {
     const payload = await postJson(
       endpoint(model, input.baseUrl, `/models/${model.apiModel}:generateContent`),
@@ -248,6 +296,16 @@ export async function requestChat(input: {
       },
       input.signal,
       'google',
+    )
+    return readChatText(payload)
+  }
+  if (model.platformId === 'claude') {
+    const payload = await postJson(
+      endpoint(model, input.baseUrl, '/messages'),
+      input.apiKey,
+      { model: model.apiModel, max_tokens: 4096, messages: claudeMessages(input.messages) },
+      input.signal,
+      'anthropic',
     )
     return readChatText(payload)
   }
@@ -265,6 +323,20 @@ export async function requestChat(input: {
     input.apiKey,
     { model: model.apiModel, messages: input.messages },
     input.signal,
+    'bearer',
+    upstream,
   )
   return readChatText(payload)
+}
+
+function claudeMessages(messages: ChatTurn[]): ChatTurn[] {
+  const rows = messages.filter((item) => item.content.trim())
+  while (rows[0]?.role === 'assistant') rows.shift()
+  const merged: ChatTurn[] = []
+  for (const item of rows) {
+    const last = merged[merged.length - 1]
+    if (last?.role === item.role) last.content = `${last.content}\n${item.content}`
+    else merged.push({ ...item })
+  }
+  return merged.length ? merged : [{ role: 'user', content: '你好' }]
 }

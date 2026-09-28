@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { COMMANDS, MODELS, modelsForPlatform, PLATFORMS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
+import { COMMANDS, getModel, modelsForPlatform, PLATFORMS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
 import { useChat } from '../lib/store'
 import type { ImageAsset, Resolution, ToolId } from '../types'
 
@@ -35,7 +35,10 @@ const modelGroups = computed(() =>
     return models.length ? [{ id: platform.id, name: platform.name, models }] : []
   }),
 )
-const pickedModel = computed(() => MODELS.find((item) => item.id === store.modelId) ?? null)
+const pickedModel = computed(() => {
+  const model = getModel(store.modelId)
+  return model.id === store.modelId ? model : null
+})
 const showImageOptions = computed(() => !pickedModel.value || pickedModel.value.kind === 'image')
 const canSend = computed(() => Boolean(store.draft.trim() || store.attachments.length || store.pendingTool))
 
@@ -242,6 +245,6 @@ function onResolution(event: Event) {
         </button>
       </div>
     </div>
-    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">可以自己选模型。选自动时，普通对话用对话模型，画图用图片模型。</p>
+    <p class="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400">可以自己选模型。选自动时会检测已接入的模型，只用返回 200 的接口。</p>
   </div>
 </template>

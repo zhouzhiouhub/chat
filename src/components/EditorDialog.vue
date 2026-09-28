@@ -126,15 +126,19 @@ watch(
   async (value) => {
     if (!value) return
     prompt.value = value.prompt
+    error.value = ''
     const preferred = MODELS.find((item) => item.id === store.modelId && item.kind === 'image' && store.connectedIds.includes(item.platformId))
-    const chosen = preferred ?? store.modelFor(value.tool)
-    modelId.value = chosen?.id ?? 'seedream'
+    if (preferred) modelId.value = preferred.id
+    else if (usesApi(value.tool)) {
+      const live = await store.pickReadyModel('image')
+      modelId.value = live?.id ?? imageChoices.value[0]?.id ?? 'seedream'
+      if (!live) error.value = '已接入的图片模型都没有返回 200。'
+    } else modelId.value = 'seedream'
     resolution.value = model.value.resolutions.includes(store.resolution)
       ? store.resolution
       : model.value.resolutions[model.value.resolutions.length - 1]
     count.value = 1
     quality.value = store.quality
-    error.value = ''
     split.value = value.grid ?? 3
     try {
       const image = await loadImage(value.sourceUrl)

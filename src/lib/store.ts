@@ -1,18 +1,18 @@
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, type InjectionKey } from 'vue'
 import {
   angleFromPrompt,
-  chooseChatModel,
-  chooseModel,
   countFromPrompt,
   enhanceFromPrompt,
   getModel,
   hasExplicitTarget,
   inferTool,
   isImagePrompt,
+  modelsOfKind,
   lightFromPrompt,
   normalizeResolution,
   platformOf,
   PLATFORMS,
+  setCompatibleModels,
   ratioFromPrompt,
   resolveRatio,
   roleLabel,
@@ -23,7 +23,7 @@ import {
   type ModelOption,
   type Suggestion,
 } from './catalog'
-import { requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
+import { modelReturns200, requestChat, requestProviderImages, type ImageJob, type ImageRequest } from './providers'
 import { composeImage, cropToRatio, cutoutImage, downscaleFile, resizeImage, sliceGrid } from './render'
 import type {
   AspectRatio,
@@ -87,9 +87,10 @@ export interface ChatStore {
   closeSettings: () => void
   apiKey: (platformId: string) => string
   baseUrl: (platformId: string) => string
-  saveApi: (platformId: string, apiKey: string, baseUrl: string) => void
+  saveApi: (platformId: string, apiKey: string, baseUrl: string, modelIds?: string) => void
   clearApi: (platformId: string) => void
-  modelFor: (tool: ToolId) => ModelOption | null
+  modelIds: (platformId: string) => string[]
+  pickReadyModel: (kind: 'chat' | 'image') => Promise<ModelOption | null>
   requestImages: (input: ImageJob) => Promise<string[]>
 }
 
@@ -118,6 +119,7 @@ const API_STORAGE_KEY = 'huahua.api.v1'
 interface ApiConfig {
   apiKey: string
   baseUrl: string
+  modelIds?: string[]
 }
 
 function wait(ms: number): Promise<void> {
@@ -135,6 +137,11 @@ function blankMessage(role: Message['role'], text = ''): Message {
   return { id: uid(), role, text, plan: [], attachments: [], confirm: null, images: [] }
 }
 
+function cleanModelIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))].slice(0, 40)
+}
+
 function loadApi(): Record<string, ApiConfig> {
   try {
     const raw = localStorage.getItem(API_STORAGE_KEY)
@@ -147,6 +154,7 @@ function loadApi(): Record<string, ApiConfig> {
       configs[platform.id] = {
         apiKey: item.apiKey.trim(),
         baseUrl: item.baseUrl?.trim() || platform.defaultBaseUrl,
+        modelIds: platform.customModels ? cleanModelIds(item.modelIds) : undefined,
       }
     }
     return configs
@@ -378,6 +386,7 @@ export function createChatStore(): ChatStore {
   const pulse = ref(0)
   const settingsOpen = ref(false)
   const apiConfigs = ref<Record<string, ApiConfig>>(loadApi())
+  setCompatibleModels(apiConfigs.value.compatible?.modelIds ?? [])
   const connectedIds = computed(() =>
     PLATFORMS.filter((platform) => apiConfigs.value[platform.id]?.apiKey.trim()).map((platform) => platform.id),
   )
@@ -433,8 +442,21 @@ export function createChatStore(): ChatStore {
     }
   }
 
-  function modelFor(tool: ToolId): ModelOption | null {
-    return chooseModel(tool, connectedIds.value)
+  async function ensureReady(model: ModelOption): Promise<boolean> {
+    return modelReturns200(
+      model,
+      apiConfigs.value[model.platformId]?.apiKey ?? '',
+      baseUrl(model.platformId),
+      requests.signal,
+    )
+  }
+
+  async function pickReadyModel(kind: 'chat' | 'image'): Promise<ModelOption | null> {
+    for (const model of modelsOfKind(kind, connectedIds.value)) {
+      if (requests.signal.aborted) return null
+      if (await ensureReady(model)) return model
+    }
+    return null
   }
 
   function pickedModel(): ModelOption | null {
@@ -650,10 +672,24 @@ export function createChatStore(): ChatStore {
       const selected = pickedModel()
       const plainChat = tool === 'generate' && (selected ? selected.kind === 'chat' : !isImagePrompt(finalText))
       if (plainChat) {
-        const model = selected?.kind === 'chat' ? selected : chooseChatModel(connectedIds.value)
-        if (!model) {
-          assistant.text = '还没有可用的对话模型。请点左下角「设置」接入平台，或在输入框里改选一个模型。'
-          return
+        let model = selected?.kind === 'chat' ? selected : null
+        if (model) {
+          assistant.plan = [`正在确认 ${model.name} 是否返回 200`]
+          bump()
+          if (!(await ensureReady(model))) {
+            if (my !== runToken) return
+            assistant.text = `${model.name} 没有返回 200，这次没有继续请求。`
+            return
+          }
+        } else {
+          assistant.plan = ['正在逐个检测对话模型，只使用返回 200 的接口']
+          bump()
+          model = await pickReadyModel('chat')
+          if (my !== runToken) return
+          if (!model) {
+            assistant.text = '已接入的对话模型都没有返回 200。请检查密钥，或在输入框里改选一个模型。'
+            return
+          }
         }
         assistant.plan = [`${model.name}（${platformOf(model.platformId).name}${selected ? '' : '，自动选择'}）`]
         try {
@@ -678,13 +714,27 @@ export function createChatStore(): ChatStore {
         assistant.text = '当前选的是对话模型，这个操作需要图片模型。请改成自动，或另选一个图片模型。'
         return
       }
-      const chosen = selected?.kind === 'image' ? selected : chooseModel(tool, connectedIds.value)
-      if (usesApi(tool) && !chosen) {
-        assistant.text = '还没有可用的图片模型。请点左下角「设置」接入平台，或在输入框里改选一个模型。'
-        return
+      let imageModel = selected?.kind === 'image' ? selected : null
+      if (usesApi(tool) && imageModel) {
+        assistant.plan = [`正在确认 ${imageModel.name} 是否返回 200`]
+        bump()
+        if (!(await ensureReady(imageModel))) {
+          if (my !== runToken) return
+          assistant.text = `${imageModel.name} 没有返回 200，这次没有继续请求。`
+          return
+        }
+      } else if (usesApi(tool)) {
+        assistant.plan = ['正在逐个检测图片模型，只使用返回 200 的接口']
+        bump()
+        imageModel = await pickReadyModel('image')
+        if (my !== runToken) return
+        if (!imageModel) {
+          assistant.text = '已接入的图片模型都没有返回 200。请检查密钥，或在输入框里改选一个模型。'
+          return
+        }
       }
-      const imageModel = chosen ?? getModel('seedream')
-      resolution.value = normalizeResolution(imageModel.id, resolution.value)
+      const shownModel = imageModel ?? getModel('seedream')
+      if (imageModel) resolution.value = normalizeResolution(imageModel.id, resolution.value)
       assistant.text =
         mode.value === 'auto'
           ? '我按当前规格直接生成。新结果留在这条对话里，原来的图片不会被覆盖。'
@@ -696,7 +746,7 @@ export function createChatStore(): ChatStore {
         assistant,
         buildPlan({
           tool,
-          modelName: `${imageModel.name}（${platformOf(imageModel.platformId).name}，${selected ? '手动选择' : '自动选择'}）`,
+          modelName: `${shownModel.name}（${platformOf(shownModel.platformId).name}，${selected ? '手动选择' : '自动选择'}）`,
           ratioLabel,
           resolution: resolution.value,
           count: tool === 'grid' ? 1 : count.value,
@@ -711,7 +761,7 @@ export function createChatStore(): ChatStore {
         status: mode.value === 'auto' ? 'generating' : 'pending',
         tool,
         prompt: finalText,
-        modelId: imageModel.id,
+        modelId: shownModel.id,
         ratio: ratio.value,
         resolution: resolution.value,
         count: tool === 'grid' || tool === 'split' || tool === 'crop' || tool === 'resize' || tool === 'cutout' ? 1 : count.value,
@@ -877,7 +927,7 @@ export function createChatStore(): ChatStore {
   onMounted(() => window.addEventListener('keydown', onKey))
   onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
-  return reactive({
+  const store = reactive({
     chats,
     activeId,
     active,
@@ -989,21 +1039,34 @@ export function createChatStore(): ChatStore {
       return apiConfigs.value[platformId]?.apiKey ?? ''
     },
     baseUrl,
-    saveApi(platformId: string, key: string, url: string) {
+    saveApi(platformId: string, key: string, url: string, modelText = '') {
       const next = { ...apiConfigs.value }
       const apiKey = key.trim()
       if (!apiKey) delete next[platformId]
-      else next[platformId] = { apiKey, baseUrl: url.trim() || platformOf(platformId).defaultBaseUrl }
+      else {
+        const platform = platformOf(platformId)
+        next[platformId] = {
+          apiKey,
+          baseUrl: url.trim() || platform.defaultBaseUrl,
+          modelIds: platform.customModels ? cleanModelIds(modelText.split(/[\n,]/)) : undefined,
+        }
+      }
       apiConfigs.value = next
+      setCompatibleModels(next.compatible?.modelIds ?? [])
       persistApi()
     },
     clearApi(platformId: string) {
       const next = { ...apiConfigs.value }
       delete next[platformId]
       apiConfigs.value = next
+      setCompatibleModels(next.compatible?.modelIds ?? [])
       persistApi()
     },
-    modelFor,
+    modelIds(platformId: string) {
+      return apiConfigs.value[platformId]?.modelIds ?? []
+    },
+    pickReadyModel,
     requestImages,
-  }) as ChatStore
+  })
+  return store as ChatStore
 }

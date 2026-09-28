@@ -17,7 +17,7 @@ const proxy = {
   '/proxy/google': {
     target: 'https://generativelanguage.googleapis.com',
     changeOrigin: true,
-    rewrite: (path: string) => path.replace(/^\/proxy\/google/, '/v1'),
+    rewrite: (path: string) => path.replace(/^\/proxy\/google/, '/v1beta'),
   },
   '/proxy/claude': {
     target: 'https://api.anthropic.com',

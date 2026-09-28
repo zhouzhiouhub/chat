@@ -144,6 +144,17 @@ function cleanModelIds(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))].slice(0, 40)
 }
 
+function canonicalBaseUrl(platformId: string, url: string): string {
+  const trimmed = url.trim().replace(/\/$/, '')
+  if (
+    platformId === 'google' &&
+    (trimmed === 'https://generativelanguage.googleapis.com' || trimmed === 'https://generativelanguage.googleapis.com/v1')
+  ) {
+    return 'https://generativelanguage.googleapis.com/v1beta'
+  }
+  return trimmed
+}
+
 function loadApi(): Record<string, ApiConfig> {
   try {
     const raw = localStorage.getItem(API_STORAGE_KEY)
@@ -155,7 +166,7 @@ function loadApi(): Record<string, ApiConfig> {
       if (!item?.apiKey?.trim()) continue
       configs[platform.id] = {
         apiKey: item.apiKey.trim(),
-        baseUrl: item.baseUrl?.trim() || platform.defaultBaseUrl,
+        baseUrl: canonicalBaseUrl(platform.id, item.baseUrl?.trim() || platform.defaultBaseUrl),
         modelIds: platform.customModels ? cleanModelIds(item.modelIds) : undefined,
       }
     }
@@ -1200,7 +1211,7 @@ export function createChatStore(): ChatStore {
         const platform = platformOf(platformId)
         next[platformId] = {
           apiKey,
-          baseUrl: url.trim() || platform.defaultBaseUrl,
+          baseUrl: canonicalBaseUrl(platformId, url.trim() || platform.defaultBaseUrl),
           modelIds: platform.customModels ? cleanModelIds(modelText.split(/[\n,]/)) : undefined,
         }
       }

@@ -37,7 +37,7 @@ export const PLATFORMS: PlatformOption[] = [
     id: 'google',
     name: 'Gemini',
     hint: ' ',
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     keyLabel: 'API Key',
   },
   {

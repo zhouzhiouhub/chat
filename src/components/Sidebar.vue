@@ -20,10 +20,8 @@ const groups = computed(() => {
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const buckets = new Map<string, Conversation[]>()
-  const needle = query.value.trim().toLowerCase()
   const ordered = [...store.chats].sort((a, b) => b.updatedAt - a.updatedAt)
   for (const chat of ordered) {
-    if (needle && !chat.title.toLowerCase().includes(needle) && !chat.messages.some((message) => message.text.toLowerCase().includes(needle))) continue
     const label = chat.updatedAt >= start ? '今天' : chat.updatedAt >= start - 86_400_000 ? '昨天' : '更早'
     const list = buckets.get(label) ?? []
     list.push(chat)
@@ -33,6 +31,18 @@ const groups = computed(() => {
     const items = buckets.get(label)
     return items ? [{ label, items }] : []
   })
+})
+
+const results = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  return [...store.chats]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .filter(
+      (chat) =>
+        !needle ||
+        chat.title.toLowerCase().includes(needle) ||
+        chat.messages.some((message) => message.text.toLowerCase().includes(needle)),
+    )
 })
 
 async function openSearch() {
@@ -45,6 +55,11 @@ async function openSearch() {
 function closeSearch() {
   searchOpen.value = false
   query.value = ''
+}
+
+function openResult(id: string) {
+  store.selectChat(id)
+  closeSearch()
 }
 
 function chooseTask(tool: ToolId | null) {
@@ -114,15 +129,6 @@ function chooseTask(tool: ToolId | null) {
           关闭
         </button>
       </div>
-      <div v-if="searchOpen" class="px-3 pb-2">
-        <input
-          ref="searchBox"
-          v-model="query"
-          class="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none"
-          placeholder="搜索对话"
-          @keydown.escape="closeSearch"
-        />
-      </div>
       <div class="px-3 py-2">
         <button
           class="flex w-full items-center gap-2 rounded-2xl border border-line bg-white px-3 py-2.5 text-sm font-medium hover:bg-[#faf8f5]"
@@ -133,7 +139,6 @@ function chooseTask(tool: ToolId | null) {
         </button>
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        <p v-if="searchOpen && query.trim() && !groups.length" class="px-2 py-6 text-center text-sm text-stone-500">没有找到对话</p>
         <section v-for="group in groups" :key="group.label" class="mt-4">
           <p class="px-2 pb-1 text-xs text-stone-500">{{ group.label }}</p>
           <div
@@ -169,5 +174,41 @@ function chooseTask(tool: ToolId | null) {
         </button>
       </div>
     </aside>
+    <div
+      v-if="searchOpen"
+      class="fixed inset-0 z-[70] flex items-start justify-center bg-[#1c1917]/25 px-4 pt-[12vh]"
+      @click.self="closeSearch"
+      @keydown.escape="closeSearch"
+    >
+      <div class="flex max-h-[min(32rem,70vh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-[0_24px_80px_rgba(28,25,23,0.16)]" role="dialog" aria-label="搜索对话">
+        <div class="flex items-center gap-2 border-b border-line px-4">
+          <input
+            ref="searchBox"
+            v-model="query"
+            class="min-w-0 flex-1 bg-transparent py-3.5 text-sm outline-none"
+            placeholder="搜索..."
+            @keydown.escape="closeSearch"
+          />
+          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 hover:bg-sand hover:text-ink" aria-label="关闭搜索" @click="closeSearch">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          <p class="px-2 py-1.5 text-xs text-stone-400">最近聊天</p>
+          <button
+            v-for="chat in results"
+            :key="chat.id"
+            class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm hover:bg-sand"
+            @click="openResult(chat.id)"
+          >
+            <span class="h-4 w-4 shrink-0 rounded-full border border-stone-300" />
+            <span class="truncate">{{ chat.title }}</span>
+          </button>
+          <p v-if="!results.length" class="px-2 py-8 text-center text-sm text-stone-500">没有找到对话</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

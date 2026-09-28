@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
-import { modelsForPlatform, PLATFORMS } from '../lib/catalog'
+import { reactive, ref, watch } from 'vue'
+import { modelsForPlatform, PLATFORMS, uid } from '../lib/catalog'
 import { useChat } from '../lib/store'
+
+interface EndpointDraft {
+  id: string
+  name: string
+  apiKey: string
+  baseUrl: string
+  modelIds: string[]
+}
 
 const store = useChat()
 const drafts = reactive<Record<string, { apiKey: string; baseUrl: string; modelText: string }>>({})
+const endpointDrafts = ref<EndpointDraft[]>([])
 const savedId = reactive<{ id: string }>({ id: '' })
+
+function blankEndpoint(): EndpointDraft {
+  return { id: uid(), name: '', apiKey: '', baseUrl: '', modelIds: [''] }
+}
 
 function sync() {
   savedId.id = ''
@@ -16,6 +29,13 @@ function sync() {
       modelText: store.modelIds(platform.id).join('\n'),
     }
   }
+  const saved = store.compatibleEndpoints()
+  endpointDrafts.value = saved.length
+    ? saved.map((item) => ({
+        ...item,
+        modelIds: item.modelIds.length ? [...item.modelIds] : [''],
+      }))
+    : [blankEndpoint()]
 }
 
 watch(
@@ -33,11 +53,53 @@ function save(platformId: string) {
   savedId.id = platformId
 }
 
+function saveCompatible() {
+  store.saveCompatibleEndpoints(
+    endpointDrafts.value.map((item) => ({
+      ...item,
+      modelIds: item.modelIds.map((modelId) => modelId.trim()).filter(Boolean),
+    })),
+  )
+  savedId.id = 'compatible'
+  const saved = store.compatibleEndpoints()
+  endpointDrafts.value = saved.length
+    ? saved.map((item) => ({
+        ...item,
+        modelIds: item.modelIds.length ? [...item.modelIds] : [''],
+      }))
+    : [blankEndpoint()]
+}
+
 function clear(platformId: string) {
   store.clearApi(platformId)
   const platform = PLATFORMS.find((item) => item.id === platformId)
   drafts[platformId] = { apiKey: '', baseUrl: platform?.defaultBaseUrl ?? '', modelText: '' }
+  if (platformId === 'compatible') endpointDrafts.value = [blankEndpoint()]
   savedId.id = ''
+}
+
+function addEndpoint() {
+  endpointDrafts.value.push(blankEndpoint())
+}
+
+function removeEndpoint(index: number) {
+  if (endpointDrafts.value.length === 1) {
+    endpointDrafts.value = [blankEndpoint()]
+    return
+  }
+  endpointDrafts.value.splice(index, 1)
+}
+
+function addModel(endpoint: EndpointDraft) {
+  endpoint.modelIds.push('')
+}
+
+function removeModel(endpoint: EndpointDraft, index: number) {
+  if (endpoint.modelIds.length === 1) {
+    endpoint.modelIds[0] = ''
+    return
+  }
+  endpoint.modelIds.splice(index, 1)
 }
 </script>
 
@@ -72,54 +134,115 @@ function clear(platformId: string) {
           </span>
         </div>
 
-        <p v-if="platform.customModels && !modelsForPlatform(platform.id).length" class="mt-3 text-xs leading-5 text-stone-500">
-          这个接口没有内置模型。在下面填写模型 ID，每行一个，保存后即可选用。
-        </p>
-        <ul v-else class="mt-3 flex flex-wrap gap-2">
-          <li v-for="model in modelsForPlatform(platform.id)" :key="model.id" class="rounded-xl bg-sand px-2.5 py-1.5">
-            <span class="block text-xs font-medium">{{ model.name }}</span>
-            <span class="block text-[11px] text-stone-500">{{ model.kind === 'chat' ? '对话' : '图片' }} · {{ model.apiModel }}</span>
-          </li>
-        </ul>
+        <template v-if="platform.customModels">
+          <div v-for="(endpoint, index) in endpointDrafts" :key="endpoint.id" class="mt-4 rounded-xl border border-line p-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm text-stone-500">接口 {{ index + 1 }}</span>
+              <button class="text-xs text-stone-500 hover:text-ink" type="button" @click="removeEndpoint(index)">删除</button>
+            </div>
+            <label class="mt-3 block text-sm">
+              <span class="text-stone-500">名称</span>
+              <input
+                v-model="endpoint.name"
+                class="mt-1 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none"
+                type="text"
+                placeholder="例如 Groq"
+              />
+            </label>
+            <div class="mt-3">
+              <span class="text-sm text-stone-500">模型 ID</span>
+              <div v-for="(_, modelIndex) in endpoint.modelIds" :key="modelIndex" class="mt-1 flex items-center gap-2">
+                <input
+                  v-model="endpoint.modelIds[modelIndex]"
+                  class="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none"
+                  type="text"
+                  placeholder="例如 gpt-4o-mini"
+                />
+                <button
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-sand"
+                  type="button"
+                  aria-label="删除模型"
+                  @click="removeModel(endpoint, modelIndex)"
+                >
+                  ×
+                </button>
+              </div>
+              <button class="mt-2 text-xs text-stone-500 hover:text-ink" type="button" @click="addModel(endpoint)">添加模型</button>
+            </div>
+            <label class="mt-3 block text-sm">
+              <span class="text-stone-500">{{ platform.keyLabel }}</span>
+              <input
+                v-model="endpoint.apiKey"
+                class="mt-1 w-full rounded-xl border border-line px-3 py-2 outline-none"
+                type="password"
+                autocomplete="off"
+                placeholder="填写这个接口的密钥"
+              />
+            </label>
+            <label class="mt-3 block text-sm">
+              <span class="text-stone-500">接口地址</span>
+              <input
+                v-model="endpoint.baseUrl"
+                class="mt-1 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none"
+                type="text"
+                placeholder="https://your-host/v1"
+              />
+            </label>
+          </div>
+          <button class="mt-3 text-sm text-stone-500 hover:text-ink" type="button" @click="addEndpoint">添加接口</button>
+          <div class="mt-3 flex items-center gap-2">
+            <button class="rounded-full bg-ink px-4 py-1.5 text-sm text-white" type="button" @click="saveCompatible">保存</button>
+            <button
+              v-if="store.connectedIds.includes(platform.id)"
+              class="rounded-full px-3 py-1.5 text-sm text-stone-500 hover:bg-sand"
+              type="button"
+              @click="clear(platform.id)"
+            >
+              清除
+            </button>
+            <span v-if="savedId.id === platform.id" class="text-xs text-stone-500">已保存</span>
+          </div>
+        </template>
 
-        <label v-if="platform.customModels" class="mt-4 block text-sm">
-          <span class="text-stone-500">模型 ID</span>
-          <textarea
-            v-model="drafts[platform.id].modelText"
-            class="mt-1 min-h-20 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none"
-            placeholder="每行一个，例如 gpt-4o-mini"
-          />
-        </label>
-        <label class="mt-4 block text-sm">
-          <span class="text-stone-500">{{ platform.keyLabel }}</span>
-          <input
-            v-model="drafts[platform.id].apiKey"
-            class="mt-1 w-full rounded-xl border border-line px-3 py-2 outline-none"
-            type="password"
-            autocomplete="off"
-            :placeholder="`填写 ${platform.name} 的密钥`"
-          />
-        </label>
-        <label class="mt-3 block text-sm">
-          <span class="text-stone-500">接口地址</span>
-          <input
-            v-model="drafts[platform.id].baseUrl"
-            class="mt-1 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none"
-            type="text"
-            :placeholder="platform.customModels ? 'https://your-host/v1' : platform.defaultBaseUrl"
-          />
-        </label>
-        <div class="mt-3 flex items-center gap-2">
-          <button class="rounded-full bg-ink px-4 py-1.5 text-sm text-white" @click="save(platform.id)">保存</button>
-          <button
-            v-if="store.connectedIds.includes(platform.id)"
-            class="rounded-full px-3 py-1.5 text-sm text-stone-500 hover:bg-sand"
-            @click="clear(platform.id)"
-          >
-            清除
-          </button>
-          <span v-if="savedId.id === platform.id" class="text-xs text-stone-500">已保存</span>
-        </div>
+        <template v-else>
+          <ul class="mt-3 flex flex-wrap gap-2">
+            <li v-for="model in modelsForPlatform(platform.id)" :key="model.id" class="rounded-xl bg-sand px-2.5 py-1.5">
+              <span class="block text-xs font-medium">{{ model.name }}</span>
+              <span class="block text-[11px] text-stone-500">{{ model.kind === 'chat' ? '对话' : '图片' }} · {{ model.apiModel }}</span>
+            </li>
+          </ul>
+          <label class="mt-4 block text-sm">
+            <span class="text-stone-500">{{ platform.keyLabel }}</span>
+            <input
+              v-model="drafts[platform.id].apiKey"
+              class="mt-1 w-full rounded-xl border border-line px-3 py-2 outline-none"
+              type="password"
+              autocomplete="off"
+              :placeholder="`填写 ${platform.name} 的密钥`"
+            />
+          </label>
+          <label class="mt-3 block text-sm">
+            <span class="text-stone-500">接口地址</span>
+            <input
+              v-model="drafts[platform.id].baseUrl"
+              class="mt-1 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none"
+              type="text"
+              :placeholder="platform.defaultBaseUrl"
+            />
+          </label>
+          <div class="mt-3 flex items-center gap-2">
+            <button class="rounded-full bg-ink px-4 py-1.5 text-sm text-white" type="button" @click="save(platform.id)">保存</button>
+            <button
+              v-if="store.connectedIds.includes(platform.id)"
+              class="rounded-full px-3 py-1.5 text-sm text-stone-500 hover:bg-sand"
+              type="button"
+              @click="clear(platform.id)"
+            >
+              清除
+            </button>
+            <span v-if="savedId.id === platform.id" class="text-xs text-stone-500">已保存</span>
+          </div>
+        </template>
       </section>
     </div>
   </div>

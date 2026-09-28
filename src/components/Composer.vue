@@ -32,6 +32,13 @@ const mentionItems = computed(() => {
 const modelGroups = computed(() =>
   PLATFORMS.flatMap((platform) => {
     if (!store.connectedIds.includes(platform.id)) return []
+    if (platform.customModels) {
+      return store.compatibleEndpoints().flatMap((endpoint) => {
+        const prefix = `compatible:${endpoint.id}:`
+        const models = modelsForPlatform(platform.id).filter((model) => model.id.startsWith(prefix))
+        return models.length ? [{ id: endpoint.id, name: endpoint.name || platform.name, models }] : []
+      })
+    }
     const models = modelsForPlatform(platform.id)
     return models.length ? [{ id: platform.id, name: platform.name, models }] : []
   }),
@@ -220,7 +227,7 @@ async function onDrop(event: DragEvent) {
             {{ modelLabel }}
           </button>
           <button v-if="modelOpen" class="fixed inset-0 z-20 cursor-default" aria-label="关闭模型" @click="modelOpen = false" />
-          <div v-if="modelOpen" class="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-52 overflow-auto rounded-2xl border border-line bg-white p-1 shadow-lg">
+          <div v-if="modelOpen" class="absolute bottom-full left-0 z-30 mb-2 max-h-80 w-64 overflow-auto rounded-2xl border border-line bg-white p-1 shadow-lg">
             <button
               class="block w-full rounded-lg px-2 py-1.5 text-left text-xs"
               :class="store.modelId === 'auto' ? 'bg-sand' : 'hover:bg-sand'"
@@ -233,7 +240,7 @@ async function onDrop(event: DragEvent) {
               <button
                 v-for="model in group.models"
                 :key="model.id"
-                class="block w-full truncate rounded-lg px-2 py-1.5 text-left text-xs"
+                class="block w-full rounded-lg px-2 py-1.5 text-left text-xs break-all"
                 :class="store.modelId === model.id ? 'bg-sand' : 'hover:bg-sand'"
                 @click="chooseModel(model.id)"
               >

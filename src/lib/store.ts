@@ -3,6 +3,7 @@ import {
   angleFromPrompt,
   countFromPrompt,
   enhanceFromPrompt,
+  extraModels,
   getModel,
   hasExplicitTarget,
   inferTool,
@@ -92,6 +93,8 @@ export interface ChatStore {
   saveApi: (platformId: string, apiKey: string, baseUrl: string, modelIds?: string) => void
   clearApi: (platformId: string) => void
   modelIds: (platformId: string) => string[]
+  compatibleEndpoints: () => CompatibleEndpoint[]
+  saveCompatibleEndpoints: (rows: CompatibleEndpoint[]) => void
   pickReadyModel: (kind: 'chat' | 'image') => Promise<ModelOption | null>
   requestImages: (input: ImageJob) => Promise<string[]>
 }
@@ -118,10 +121,19 @@ export function useChat(): ChatStore {
 const STORAGE_KEY = 'huahua.v1'
 const API_STORAGE_KEY = 'huahua.api.v1'
 
+interface CompatibleEndpoint {
+  id: string
+  name: string
+  apiKey: string
+  baseUrl: string
+  modelIds: string[]
+}
+
 interface ApiConfig {
   apiKey: string
   baseUrl: string
   modelIds?: string[]
+  endpoints?: CompatibleEndpoint[]
 }
 
 function wait(ms: number): Promise<void> {
@@ -155,6 +167,31 @@ function canonicalBaseUrl(platformId: string, url: string): string {
   return trimmed
 }
 
+function normalizeEndpoints(item: ApiConfig): CompatibleEndpoint[] {
+  const listed = Array.isArray(item.endpoints)
+    ? item.endpoints
+        .map((entry) => ({
+          id: String(entry?.id ?? '').trim() || uid(),
+          name: String(entry?.name ?? '').trim() || '自定义',
+          apiKey: String(entry?.apiKey ?? '').trim(),
+          baseUrl: canonicalBaseUrl('compatible', String(entry?.baseUrl ?? '')),
+          modelIds: cleanModelIds(entry?.modelIds),
+        }))
+        .filter((entry) => entry.apiKey)
+    : []
+  if (listed.length) return listed.slice(0, 20)
+  if (!item.apiKey?.trim()) return []
+  return [
+    {
+      id: 'legacy',
+      name: '自定义',
+      apiKey: item.apiKey.trim(),
+      baseUrl: canonicalBaseUrl('compatible', item.baseUrl?.trim() || ''),
+      modelIds: cleanModelIds(item.modelIds),
+    },
+  ]
+}
+
 function loadApi(): Record<string, ApiConfig> {
   try {
     const raw = localStorage.getItem(API_STORAGE_KEY)
@@ -163,11 +200,22 @@ function loadApi(): Record<string, ApiConfig> {
     const configs: Record<string, ApiConfig> = {}
     for (const platform of PLATFORMS) {
       const item = data[platform.id]
-      if (!item?.apiKey?.trim()) continue
+      if (!item) continue
+      if (platform.customModels) {
+        const endpoints = normalizeEndpoints(item)
+        if (!endpoints.length) continue
+        configs[platform.id] = {
+          apiKey: endpoints[0].apiKey,
+          baseUrl: endpoints[0].baseUrl,
+          modelIds: endpoints.flatMap((entry) => entry.modelIds).slice(0, 80),
+          endpoints,
+        }
+        continue
+      }
+      if (!item.apiKey?.trim()) continue
       configs[platform.id] = {
         apiKey: item.apiKey.trim(),
         baseUrl: canonicalBaseUrl(platform.id, item.baseUrl?.trim() || platform.defaultBaseUrl),
-        modelIds: platform.customModels ? cleanModelIds(item.modelIds) : undefined,
       }
     }
     return configs
@@ -399,9 +447,20 @@ export function createChatStore(): ChatStore {
   const pulse = ref(0)
   const settingsOpen = ref(false)
   const apiConfigs = ref<Record<string, ApiConfig>>(loadApi())
-  setCompatibleModels(apiConfigs.value.compatible?.modelIds ?? [])
+  publishCompatible(apiConfigs.value)
+  const currentModel = modelId.value
+  if (currentModel.startsWith('compatible:') && !extraModels.value.some((item) => item.id === currentModel)) {
+    const legacy = currentModel.slice('compatible:'.length)
+    const match = extraModels.value.find((item) => item.apiModel === legacy)
+    if (match) modelId.value = match.id
+  }
   const connectedIds = computed(() =>
-    PLATFORMS.filter((platform) => apiConfigs.value[platform.id]?.apiKey.trim()).map((platform) => platform.id),
+    PLATFORMS.filter((platform) => {
+      const config = apiConfigs.value[platform.id]
+      if (!config) return false
+      if (platform.customModels) return (config.endpoints ?? []).some((item) => item.apiKey.trim())
+      return Boolean(config.apiKey.trim())
+    }).map((platform) => platform.id),
   )
   let runToken = 0
   let requests = new AbortController()
@@ -456,10 +515,9 @@ export function createChatStore(): ChatStore {
   }
 
   async function ensureReady(model: ModelOption): Promise<boolean> {
-    const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
-    const url = baseUrl(model.platformId)
-    if (!(await platformReturns200(model.platformId, key, url, requests.signal))) return false
-    return modelReturns200(model, key, url, requests.signal)
+    const access = accessFor(apiConfigs.value, model)
+    if (!(await platformReturns200(model.platformId, access.apiKey, access.baseUrl, requests.signal))) return false
+    return modelReturns200(model, access.apiKey, access.baseUrl, requests.signal)
   }
 
   function unavailableText(kind: 'chat' | 'image'): string {
@@ -513,15 +571,16 @@ export function createChatStore(): ChatStore {
 
     const ready = async (model: ModelOption): Promise<boolean> => {
       if (requests.signal.aborted) return false
-      let ok = platformOk.get(model.platformId)
+      const cacheKey = readyCacheKey(model)
+      let ok = platformOk.get(cacheKey)
       if (ok === undefined) {
-        const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
-        ok = await platformReturns200(model.platformId, key, baseUrl(model.platformId), requests.signal)
-        platformOk.set(model.platformId, ok)
+        const access = accessFor(apiConfigs.value, model)
+        ok = await platformReturns200(model.platformId, access.apiKey, access.baseUrl, requests.signal)
+        platformOk.set(cacheKey, ok)
       }
       if (!ok || requests.signal.aborted) return false
-      const key = apiConfigs.value[model.platformId]?.apiKey ?? ''
-      return modelReturns200(model, key, baseUrl(model.platformId), requests.signal)
+      const access = accessFor(apiConfigs.value, model)
+      return modelReturns200(model, access.apiKey, access.baseUrl, requests.signal)
     }
 
     const run = async (model: ModelOption): Promise<'done' | 'busy' | 'skip' | 'stop'> => {
@@ -534,13 +593,13 @@ export function createChatStore(): ChatStore {
 
     for (const model of models) {
       if (requests.signal.aborted) return
-      if (hot.has(model.platformId)) {
+      if (hot.has(readyCacheKey(model))) {
         deferred.push(model)
         continue
       }
       const result = await run(model)
       if (result === 'done' || result === 'stop') return
-      if (result === 'busy') hot.add(model.platformId)
+      if (result === 'busy') hot.add(readyCacheKey(model))
     }
     for (const model of deferred) {
       if (requests.signal.aborted || calls >= 4) return
@@ -572,10 +631,11 @@ export function createChatStore(): ChatStore {
 
   async function requestImages(input: ImageJob): Promise<string[]> {
     const model = getModel(input.modelId)
+    const access = accessFor(apiConfigs.value, model)
     const request: ImageRequest = {
       ...input,
-      apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
-      baseUrl: baseUrl(model.platformId),
+      apiKey: access.apiKey,
+      baseUrl: access.baseUrl,
       signal: requests.signal,
     }
     return requestProviderImages(request)
@@ -613,7 +673,33 @@ export function createChatStore(): ChatStore {
     return apiConfigs.value[platformId]?.baseUrl.trim() || platformOf(platformId).defaultBaseUrl
   }
 
-  function persistApi() {
+  function publishCompatible(configs: Record<string, ApiConfig>) {
+  setCompatibleModels(configs.compatible?.endpoints ?? [])
+}
+
+function accessFor(configs: Record<string, ApiConfig>, model: ModelOption): { apiKey: string; baseUrl: string } {
+  if (model.platformId === 'compatible') {
+    const rest = model.id.startsWith('compatible:') ? model.id.slice('compatible:'.length) : ''
+    const at = rest.indexOf(':')
+    const endpointId = at < 0 ? '' : rest.slice(0, at)
+    const endpoint = configs.compatible?.endpoints?.find((item) => item.id === endpointId)
+    return { apiKey: endpoint?.apiKey ?? '', baseUrl: endpoint?.baseUrl ?? '' }
+  }
+  const config = configs[model.platformId]
+  return {
+    apiKey: config?.apiKey ?? '',
+    baseUrl: config?.baseUrl.trim() || platformOf(model.platformId).defaultBaseUrl,
+  }
+}
+
+function readyCacheKey(model: ModelOption): string {
+  if (model.platformId !== 'compatible') return model.platformId
+  const rest = model.id.startsWith('compatible:') ? model.id.slice('compatible:'.length) : ''
+  const at = rest.indexOf(':')
+  return at < 0 ? model.platformId : `compatible:${rest.slice(0, at)}`
+}
+
+function persistApi() {
     try {
       localStorage.setItem(API_STORAGE_KEY, JSON.stringify(apiConfigs.value))
     } catch {
@@ -803,11 +889,12 @@ export function createChatStore(): ChatStore {
           }
           assistant.plan = [modelCaption(manual, false)]
           try {
+            const access = accessFor(apiConfigs.value, manual)
             assistant.text = await requestChat({
               modelId: manual.id,
               messages: history,
-              apiKey: apiConfigs.value[manual.platformId]?.apiKey ?? '',
-              baseUrl: baseUrl(manual.platformId),
+              apiKey: access.apiKey,
+              baseUrl: access.baseUrl,
               signal: requests.signal,
             })
           } catch (error) {
@@ -824,11 +911,12 @@ export function createChatStore(): ChatStore {
           assistant.plan = [...skipped.map((name) => `${name} 当前繁忙`), modelCaption(model, true)]
           bump()
           try {
+            const access = accessFor(apiConfigs.value, model)
             assistant.text = await requestChat({
               modelId: model.id,
               messages: history,
-              apiKey: apiConfigs.value[model.platformId]?.apiKey ?? '',
-              baseUrl: baseUrl(model.platformId),
+              apiKey: access.apiKey,
+              baseUrl: access.baseUrl,
               signal: requests.signal,
             })
             settled = true
@@ -1209,28 +1297,72 @@ export function createChatStore(): ChatStore {
     saveApi(platformId: string, key: string, url: string, modelText = '') {
       const next = { ...apiConfigs.value }
       const apiKey = key.trim()
+      const platform = platformOf(platformId)
       if (!apiKey) delete next[platformId]
-      else {
-        const platform = platformOf(platformId)
+      else if (platform.customModels) {
+        const endpoint: CompatibleEndpoint = {
+          id: next.compatible?.endpoints?.[0]?.id || uid(),
+          name: next.compatible?.endpoints?.[0]?.name || '自定义',
+          apiKey,
+          baseUrl: canonicalBaseUrl(platformId, url),
+          modelIds: cleanModelIds(modelText.split(/[\n,]/)),
+        }
+        next[platformId] = {
+          apiKey,
+          baseUrl: endpoint.baseUrl,
+          modelIds: endpoint.modelIds,
+          endpoints: [endpoint],
+        }
+      } else {
         next[platformId] = {
           apiKey,
           baseUrl: canonicalBaseUrl(platformId, url.trim() || platform.defaultBaseUrl),
-          modelIds: platform.customModels ? cleanModelIds(modelText.split(/[\n,]/)) : undefined,
         }
       }
       apiConfigs.value = next
-      setCompatibleModels(next.compatible?.modelIds ?? [])
+      publishCompatible(next)
       persistApi()
     },
     clearApi(platformId: string) {
       const next = { ...apiConfigs.value }
       delete next[platformId]
       apiConfigs.value = next
-      setCompatibleModels(next.compatible?.modelIds ?? [])
+      publishCompatible(next)
       persistApi()
     },
     modelIds(platformId: string) {
       return apiConfigs.value[platformId]?.modelIds ?? []
+    },
+    compatibleEndpoints() {
+      return (apiConfigs.value.compatible?.endpoints ?? []).map((item) => ({
+        ...item,
+        modelIds: [...item.modelIds],
+      }))
+    },
+    saveCompatibleEndpoints(rows: CompatibleEndpoint[]) {
+      const endpoints = rows
+        .map((row) => ({
+          id: row.id.trim() || uid(),
+          name: row.name.trim() || '自定义',
+          apiKey: row.apiKey.trim(),
+          baseUrl: canonicalBaseUrl('compatible', row.baseUrl),
+          modelIds: cleanModelIds(row.modelIds),
+        }))
+        .filter((row) => row.apiKey)
+        .slice(0, 20)
+      const next = { ...apiConfigs.value }
+      if (!endpoints.length) delete next.compatible
+      else {
+        next.compatible = {
+          apiKey: endpoints[0].apiKey,
+          baseUrl: endpoints[0].baseUrl,
+          modelIds: endpoints.flatMap((item) => item.modelIds).slice(0, 80),
+          endpoints,
+        }
+      }
+      apiConfigs.value = next
+      publishCompatible(next)
+      persistApi()
     },
     pickReadyModel,
     requestImages,

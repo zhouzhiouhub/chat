@@ -128,7 +128,7 @@ export const PLATFORMS: PlatformOption[] = [
   {
     id: 'compatible',
     name: 'OpenAI Compatible',
-    hint: ' ',
+    hint: '可以添加多个接口。每个接口单独填写地址和密钥，再逐个添加模型。',
     defaultBaseUrl: '',
     keyLabel: 'API Key',
     customModels: true,
@@ -278,9 +278,20 @@ const CHAT_PREFERENCE = [
 
 export const extraModels = ref<ModelOption[]>([])
 
-export function setCompatibleModels(ids: string[]) {
-  const unique = [...new Set(ids.map((item) => item.trim()).filter(Boolean))].slice(0, 40)
-  extraModels.value = unique.map((id) => chatModel(`compatible:${id}`, id, 'compatible', id))
+export function setCompatibleModels(endpoints: { id: string; name: string; modelIds: string[] }[]) {
+  const models: ModelOption[] = []
+  for (const endpoint of endpoints) {
+    const seen = new Set<string>()
+    for (const raw of endpoint.modelIds) {
+      const modelId = raw.trim()
+      if (!modelId || seen.has(modelId)) continue
+      seen.add(modelId)
+      models.push(chatModel(`compatible:${endpoint.id}:${modelId}`, modelId, 'compatible', modelId))
+      if (models.length >= 80) break
+    }
+    if (models.length >= 80) break
+  }
+  extraModels.value = models
 }
 
 function listedModels(): ModelOption[] {

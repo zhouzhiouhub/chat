@@ -62,6 +62,7 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
 
 <template>
   <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto">
+    <div class="flex min-h-full flex-col">
     <div v-if="!store.active?.messages.length" class="mx-auto flex max-w-2xl flex-col items-center px-4 pt-[10vh] text-center">
       <img :src="logoUrl" alt="kinolin" class="h-auto w-64 max-w-full" />
       <p class="mt-3 max-w-md text-sm leading-6 text-stone-500">
@@ -81,7 +82,7 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
       <p class="mt-6 text-xs text-stone-400">输入 / 打开工具，输入 @ 引用已经生成的图片。当前画面是本地预览。</p>
     </div>
 
-    <div v-else class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+    <div v-else class="mx-auto mt-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <article v-for="message in store.active.messages" :key="message.id" class="rise">
         <div v-if="message.role === 'user'" class="flex justify-end">
           <div class="max-w-[85%]">
@@ -166,6 +167,7 @@ async function onEditPaste(message: Message, event: ClipboardEvent) {
           </div>
         </div>
       </article>
+    </div>
     </div>
   </div>
 </template>

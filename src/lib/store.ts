@@ -70,8 +70,9 @@ export interface ChatStore {
   approve: (messageId: string) => Promise<void>
   cancelConfirm: (messageId: string) => void
   updateConfirm: (messageId: string, patch: Partial<ConfirmSpec>) => void
-  addFiles: (files: File[]) => Promise<void>
+  addFiles: (files: File[], messageId?: string) => Promise<void>
   removeAttachment: (id: string) => void
+  removeMessageAttachment: (messageId: string, attachmentId: string) => void
   setAttachmentRole: (id: string, role: ReferenceRole) => void
   quoteImage: (image: ImageAsset) => void
   setPendingTool: (tool: ToolId | null) => void
@@ -838,20 +839,34 @@ export function createChatStore(): ChatStore {
     bump()
   }
 
-  async function addFiles(files: File[]) {
+  function attachmentName(file: File, existing: Attachment[]): string {
+    const base = file.name.replace(/\.[^.]+$/, '').trim()
+    if (base && !/^(image|screenshot|blob|pasted-image|粘贴图片)$/i.test(base)) return base.slice(0, 40)
+    const count = existing.filter((item) => item.name === '粘贴图片' || item.name.startsWith('粘贴图片 ')).length
+    return count === 0 ? '粘贴图片' : `粘贴图片 ${count + 1}`
+  }
+
+  async function addFiles(files: File[], messageId?: string) {
+    const message = messageId ? findMessage(messageId) : null
+    if (messageId && !message) return
+    const list = message ? message.attachments : attachments.value
     for (const file of files) {
       if (!file.type.startsWith('image/')) continue
       try {
         const url = await downscaleFile(file)
-        attachments.value.push({
+        list.push({
           id: uid(),
-          name: file.name.replace(/\.[^.]+$/, '') || '参考图',
+          name: attachmentName(file, list),
           url,
-          role: attachments.value.length === 0 ? 'product' : 'style',
+          role: list.length === 0 ? 'product' : 'style',
         })
       } catch {
         // Skip files that cannot be decoded.
       }
+    }
+    if (message && files.length) {
+      bump()
+      persist()
     }
   }
 
@@ -990,6 +1005,13 @@ export function createChatStore(): ChatStore {
     addFiles,
     removeAttachment(id: string) {
       attachments.value = attachments.value.filter((item) => item.id !== id)
+    },
+    removeMessageAttachment(messageId: string, attachmentId: string) {
+      const message = findMessage(messageId)
+      if (!message) return
+      message.attachments = message.attachments.filter((item) => item.id !== attachmentId)
+      bump()
+      persist()
     },
     setAttachmentRole(id: string, role: ReferenceRole) {
       const item = attachments.value.find((attachment) => attachment.id === id)

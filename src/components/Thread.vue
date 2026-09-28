@@ -5,6 +5,7 @@ import symbolUrl from '../assets/kinolin-symbol.svg'
 import ConfirmCard from './ConfirmCard.vue'
 import ImageTile from './ImageTile.vue'
 import { ratioValue, resolveRatio, SUGGESTIONS } from '../lib/catalog'
+import { fileFromImageUrl, imageFilesFromTransfer, imageSrcsFromTransfer } from '../lib/clipboard'
 import { useChat } from '../lib/store'
 import type { AspectRatio, Message } from '../types'
 
@@ -44,6 +45,19 @@ async function submitEdit(message: Message) {
   editingId.value = null
   await store.resend(message.id, text)
 }
+
+async function onEditPaste(message: Message, event: ClipboardEvent) {
+  const files = imageFilesFromTransfer(event.clipboardData)
+  const srcs = files.length ? [] : imageSrcsFromTransfer(event.clipboardData)
+  if (!files.length && !srcs.length) return
+  event.preventDefault()
+  if (files.length) {
+    await store.addFiles(files, message.id)
+    return
+  }
+  const fetched = (await Promise.all(srcs.map((src) => fileFromImageUrl(src)))).filter((file) => file !== null)
+  if (fetched.length) await store.addFiles(fetched, message.id)
+}
 </script>
 
 <template>
@@ -72,19 +86,25 @@ async function submitEdit(message: Message) {
         <div v-if="message.role === 'user'" class="flex justify-end">
           <div class="max-w-[85%]">
             <div v-if="message.attachments.length" class="mb-2 flex justify-end gap-2">
-              <img
-                v-for="item in message.attachments"
-                :key="item.id"
-                :src="item.url"
-                :alt="item.name"
-                class="h-16 w-16 rounded-xl border border-line object-cover"
-              />
+              <span v-for="item in message.attachments" :key="item.id" class="relative">
+                <img :src="item.url" :alt="item.name" class="h-16 w-16 rounded-xl border border-line object-cover" />
+                <button
+                  v-if="editingId === message.id"
+                  class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-xs text-white"
+                  :aria-label="`移除${item.name}`"
+                  @click="store.removeMessageAttachment(message.id, item.id)"
+                >
+                  ×
+                </button>
+              </span>
             </div>
             <div v-if="editingId === message.id" class="w-[min(70vw,28rem)]">
               <textarea
                 v-model="editText"
                 rows="3"
                 class="w-full rounded-[20px] border border-line bg-white px-4 py-2.5 text-sm leading-6 outline-none"
+                placeholder="可粘贴图片"
+                @paste="onEditPaste(message, $event)"
               />
               <div class="mt-2 flex justify-end gap-2">
                 <button class="rounded-full px-3 py-1.5 text-xs text-stone-500 hover:bg-sand" @click="editingId = null">取消</button>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { COMMANDS, getModel, modelsForPlatform, PLATFORMS, RATIOS, ROLES, TOOL_META } from '../lib/catalog'
+import { fileFromImageUrl, imageFilesFromTransfer, imageSrcsFromTransfer } from '../lib/clipboard'
 import { useChat } from '../lib/store'
 import type { ImageAsset, Resolution, ToolId } from '../types'
 
@@ -115,9 +116,35 @@ async function onFiles(event: Event) {
   input.value = ''
 }
 
+async function addTransferImages(files: File[], srcs: string[]) {
+  if (files.length) {
+    await store.addFiles(files)
+    return
+  }
+  for (const image of gallery.value) {
+    if (srcs.includes(image.url)) store.quoteImage(image)
+  }
+  const known = new Set(gallery.value.map((image) => image.url))
+  const fetched = (await Promise.all(srcs.filter((src) => !known.has(src)).map((src) => fileFromImageUrl(src)))).filter(
+    (file) => file !== null,
+  )
+  if (fetched.length) await store.addFiles(fetched)
+}
+
+async function onPaste(event: ClipboardEvent) {
+  if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return
+  const files = imageFilesFromTransfer(event.clipboardData)
+  const srcs = files.length ? [] : imageSrcsFromTransfer(event.clipboardData)
+  if (!files.length && !srcs.length) return
+  event.preventDefault()
+  await addTransferImages(files, srcs)
+}
+
 async function onDrop(event: DragEvent) {
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (files.length) await store.addFiles(files)
+  const files = imageFilesFromTransfer(event.dataTransfer)
+  const srcs = files.length ? [] : imageSrcsFromTransfer(event.dataTransfer)
+  if (!files.length && !srcs.length) return
+  await addTransferImages(files, srcs)
 }
 
 function onResolution(event: Event) {
@@ -131,6 +158,7 @@ function onResolution(event: Event) {
       class="relative mx-auto w-full max-w-3xl rounded-[28px] border border-line bg-white shadow-[0_10px_30px_rgba(28,25,23,0.05)]"
       @dragover.prevent
       @drop.prevent="onDrop"
+      @paste="onPaste"
     >
       <div
         v-if="slashItems.length"
@@ -191,7 +219,7 @@ function onResolution(event: Event) {
         v-model="store.draft"
         rows="1"
         class="max-h-40 w-full bg-transparent px-4 pt-3 pb-1 text-sm leading-6 outline-none"
-        :placeholder="showImageOptions ? '描述主体、环境、构图、光线和风格。用 @ 引用图片，用 / 调用工具' : '输入问题。用 / 调用图片工具，用 @ 引用图片'"
+        :placeholder="showImageOptions ? '描述主体、环境、构图、光线和风格。可粘贴图片，用 @ 引用，用 / 调用工具' : '输入问题。可粘贴图片，用 / 调用图片工具，用 @ 引用图片'"
         @keydown="onKeydown"
       />
 

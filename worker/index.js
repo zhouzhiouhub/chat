@@ -4,6 +4,7 @@ const PLATFORMS = {
   google: ['https://generativelanguage.googleapis.com', '/v1beta'],
   claude: ['https://api.anthropic.com', '/v1'],
   deepseek: ['https://api.deepseek.com', ''],
+  kimi: ['https://api.moonshot.cn', '/v1'],
 }
 
 const FORWARDED = ['authorization', 'content-type', 'x-goog-api-key', 'x-api-key', 'anthropic-version']

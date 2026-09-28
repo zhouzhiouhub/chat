@@ -29,6 +29,11 @@ const proxy = {
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/proxy\/deepseek/, ''),
   },
+  '/proxy/kimi': {
+    target: 'https://api.moonshot.cn',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/proxy\/kimi/, '/v1'),
+  },
 }
 
 async function forwardUpstream(req: IncomingMessage, res: ServerResponse) {

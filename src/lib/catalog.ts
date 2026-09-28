@@ -67,6 +67,14 @@ export const PLATFORMS: PlatformOption[] = [
     site: 'https://www.deepseek.com/',
   },
   {
+    id: 'kimi',
+    name: 'Kimi',
+    hint: ' ',
+    defaultBaseUrl: 'https://api.moonshot.cn/v1',
+    keyLabel: 'API Key',
+    site: 'https://www.kimi.com/',
+  },
+  {
     id: 'volcengine',
     name: '火山方舟',
     hint: ' ',
@@ -159,6 +167,11 @@ export const MODELS: ModelOption[] = [
 
   chatModel('deepseek-v4-pro', 'DeepSeek V4 Pro', 'deepseek'),
   chatModel('deepseek-flash', 'DeepSeek Flash', 'deepseek'),
+
+  chatModel('kimi-k3', 'Kimi K3', 'kimi'),
+  chatModel('kimi-k2.6', 'Kimi K2.6', 'kimi'),
+  chatModel('kimi-k2.7-code', 'Kimi K2.7 Code', 'kimi'),
+  chatModel('kimi-k2.7-code-highspeed', 'Kimi K2.7 Code HighSpeed', 'kimi'),
 ]
 
 const MODEL_PREFERENCE: Record<ToolId, string[]> = {
@@ -182,6 +195,7 @@ const CHAT_PREFERENCE = [
   'claude-opus-5',
   'gemini-3.8-flash',
   'deepseek-v4-pro',
+  'kimi-k3',
   'seed-2.1-pro',
   'gpt-5.6-terra',
   'claude-sonnet-5',
